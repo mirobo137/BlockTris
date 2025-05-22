@@ -4,7 +4,12 @@ body {
   background: linear-gradient(to bottom right, #6D5B97, #A77DBA);
   color: #ffffff;
   margin: 0;
-  padding-top: 20px;
+  padding: 0; /* Remove padding-top para que start-screen ocupe todo */
+  display: flex; /* Para centrar el contenido de la pantalla de inicio si es necesario */
+  flex-direction: column;
+  align-items: center;
+  justify-content: center; /* Centra verticalmente el contenido de la pantalla de inicio */
+  min-height: 100vh; /* Asegura que el body ocupe al menos toda la altura de la ventana */
 }
 
 #game-container {
@@ -301,4 +306,132 @@ body {
   animation: shrinkAndFadeOut 0.5s forwards; /* Duración coincide con ANIMATION_DURATION */
   /* Asegúrate de que los bloques no interfieran con clics durante la animación si es necesario */
   /* pointer-events: none;  Podría ser útil si la animación es muy lenta */
+}
+
+/* Clase genérica para ocultar elementos */
+.hidden {
+  display: none !important; /* !important para asegurar que sobreescriba otros display */
+}
+
+/* Pantalla de Inicio */
+#start-screen {
+  width: 100%;
+  /* min-height: 100vh;Quitado de aquí, puesto en body */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.start-screen-content h1 {
+  font-size: 3.5em; /* Más grande */
+  color: #FFEB3B; /* Amarillo */
+  text-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+  margin-bottom: 30px;
+}
+
+#mode-selection-area h2 {
+  font-size: 1.8em;
+  margin-bottom: 20px;
+  color: #f0f0f0;
+}
+
+.mode-button { /* Estilos ya definidos, pero podemos ajustarlos si es necesario */
+  background-color: #4CAF50; /* Verde */
+  color: white;
+  border: none;
+  padding: 15px 35px; /* Un poco más de padding */
+  font-size: 1.3em; /* Un poco más grande */
+  font-weight: bold;
+  border-radius: 10px; /* Más redondeado */
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+  margin: 15px;
+  min-width: 280px; /* Ancho mínimo */
+  /* display: block; No es necesario si el contenedor es flex column */
+}
+
+.mode-button:hover {
+  background-color: #45a049;
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+}
+
+/* Panel de Descripción del Modo */
+#mode-description-panel {
+  background-color: rgba(0, 0, 0, 0.3); /* Fondo semi-transparente oscuro */
+  padding: 30px;
+  border-radius: 15px;
+  margin-top: 30px;
+  max-width: 600px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+#mode-description-panel h3 {
+  font-size: 2em;
+  color: #FFEB3B; /* Amarillo */
+  margin-top: 0;
+  margin-bottom: 15px;
+}
+
+#mode-description-panel p {
+  font-size: 1.1em;
+  line-height: 1.6;
+  margin-bottom: 25px;
+  color: #e0e0e0;
+}
+
+.action-button, .secondary-action-button {
+  border: none;
+  padding: 12px 25px;
+  font-size: 1.1em;
+  font-weight: bold;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  margin: 8px;
+}
+
+.action-button {
+  background-color: #FFEB3B; /* Amarillo */
+  color: #333333;
+}
+
+.action-button:hover {
+  background-color: #FFD700;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.25);
+}
+
+.secondary-action-button {
+  background-color: #6c757d; /* Gris */
+  color: white;
+}
+
+.secondary-action-button:hover {
+  background-color: #5a6268;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.25);
+}
+
+/* Ajuste para el game-container y pieces-container si es necesario */
+#game-area {
+    display: flex; 
+    flex-direction: column; /* Apilar verticalmente */
+    align-items: center;    /* Centrar horizontalmente los elementos hijos */
+    justify-content: center; /* Centrar verticalmente (si hay espacio extra, opcional) */
+    gap: 20px; /* Espacio entre game-container y pieces-container */
+    margin-top: 20px;
+    width: auto; 
+}
+
+#pieces-container h3 {
+    margin-top: 0; /* Ajustar si el título está muy arriba */
+    margin-bottom: 10px;
 } 

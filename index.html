@@ -3,25 +3,48 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Block Puzzle</title>
+  <title>BlockTris Deluxe</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Block Puzzle</h1>
-  <div id="game-container">
-    <div id="board"></div>
-    <div id="pieces"></div>
-    <div id="score">Puntos: 0</div>
-  </div>
-  <script src="script.js"></script>
+  <div id="start-screen">
+    <div class="start-screen-content">
+      <h1>BlockTris Deluxe</h1>
+      
+      <div id="mode-selection-area">
+        <h2>Elige un Modo de Juego</h2>
+        <button id="modeLevelsButton" class="mode-button" data-mode="levels">Modo Niveles</button>
+        <button id="modeComboButton" class="mode-button" data-mode="combo">Modo Combo Infinito</button>
+      </div>
 
-  <!-- Modal de Juego Terminado -->
-  <div id="gameOverModal" class="modal-overlay" style="display: none;">
-    <div class="modal-content">
-      <h2>¡Juego Terminado!</h2>
-      <p id="finalScore">Puntaje Final: 0</p>
-      <button id="restartGameButton">Jugar de Nuevo</button>
+      <div id="mode-description-panel" class="hidden">
+        <h3 id="description-title">Título del Modo</h3>
+        <p id="description-text">Aquí irá la explicación detallada del modo de juego seleccionado, incluyendo sus reglas principales y objetivos.</p>
+        <button id="playSelectedModeButton" class="action-button">¡Jugar!</button>
+        <button id="backToModeSelectionButton" class="secondary-action-button">Elegir Otro Modo</button>
+      </div>
     </div>
   </div>
+
+  <div id="game-area" class="hidden">
+    <div id="game-container">
+      <div id="board"></div>
+      <div id="score">Puntos: 0</div>
+    </div>
+    <div id="pieces-container">
+      <h3>Siguientes Piezas:</h3>
+      <div id="pieces"></div>
+    </div>
+  </div>
+
+  <div id="gameOverModal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <h2 id="gameOverTitle">¡Juego Terminado!</h2>
+      <p id="finalScore">Puntaje Final: 0</p>
+      <button id="restartGameButton">Volver al Inicio</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
 </body>
 </html> 
