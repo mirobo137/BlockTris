@@ -3,6 +3,11 @@ const boardElement = document.getElementById("board");
 const scoreElement = document.getElementById("score");
 let score = 0;
 
+// Elementos del Modal de Game Over
+const gameOverModal = document.getElementById('gameOverModal');
+const finalScoreElement = document.getElementById('finalScore');
+const restartGameButton = document.getElementById('restartGameButton');
+
 // Definición de las piezas del Tetris
 const PIECES = {
   O: [
@@ -136,8 +141,9 @@ const CELL_SIZE = 30; // Tamaño de la celda del tablero en píxeles
 const GAP_SIZE = 2;   // Tamaño del gap entre celdas del tablero en píxeles
 
 let currentShadowCells = [];
+const SHADOW_SNAP_THRESHOLD_CELLS = 1.5; // Umbral para "ajustar" la sombra, en unidades de celdas
 
-const ANIMATION_DURATION = 2000; // ms, DEBE COINCIDIR CON CSS (2s)
+const ANIMATION_DURATION = 500; // ms, DEBE COINCIDIR CON CSS (antes 2000ms, ahora 0.5s)
 
 // Función de ayuda para convertir HEX a RGBA
 function hexToRgba(hex, alpha = 1) {
@@ -163,98 +169,155 @@ function dragMove(event) {
   const clientX = event.clientX || event.touches[0].clientX;
   const clientY = event.clientY || event.touches[0].clientY;
 
-  // El clon se mueve para que su centro (definido por el nuevo offsetX/Y) esté en clientX, clientY
-  draggedPieceElement.style.left = `${clientX - offsetX}px`;
-  draggedPieceElement.style.top = `${clientY - offsetY}px`;
+  // El clon se mueve para que su esquina superior izquierda esté en clientX - offsetX, clientY - offsetY
+  const newPieceLeft = clientX - offsetX;
+  const newPieceTop = clientY - offsetY;
+  draggedPieceElement.style.left = `${newPieceLeft}px`;
+  draggedPieceElement.style.top = `${newPieceTop}px`;
 
-  updatePieceShadow(clientX, clientY); // clientX, clientY ahora representan el centro de la pieza
+  // Calcular el NUEVO centro de la pieza flotante para la sombra
+  const draggedRect = draggedPieceElement.getBoundingClientRect();
+  const pieceCenterX = draggedRect.left + draggedRect.width / 2;
+  const pieceCenterY = draggedRect.top + draggedRect.height / 2;
+
+  updatePieceShadow(pieceCenterX, pieceCenterY); // Pasar el centro de la pieza flotante
 }
 
-function updatePieceShadow(centerX, centerY) {
+function updatePieceShadow(pieceCenterX, pieceCenterY) {
+  // Limpiar sombra anterior
   currentShadowCells.forEach(cell => {
     cell.classList.remove('shadow');
-    cell.style.backgroundColor = cell.dataset.pieceColor || '';
+    // Restaura el color original solo si no está ocupada por una pieza real
+    const r = parseInt(cell.dataset.row);
+    const c = parseInt(cell.dataset.col);
+    if (board[r][c] === 0) {
+        cell.style.backgroundColor = ''; // O el color de celda vacía si es diferente a ''
+    } else {
+        cell.style.backgroundColor = cell.dataset.pieceColor || ''; // Color de la pieza que la ocupa
+    }
   });
   currentShadowCells = [];
 
-  if (!selectedPiece || !selectedPiece.color) return;
-  const boardRect = boardElement.getBoundingClientRect();
-  const pieceWidth = draggedPieceElement ? draggedPieceElement.offsetWidth : (selectedPiece.matrix[0].length * 15 * 1.25);
-  const pieceHeight = draggedPieceElement ? draggedPieceElement.offsetHeight : (selectedPiece.matrix.length * 15 * 1.25);
-  const pieceTopLeftX = centerX - (pieceWidth / 2);
-  const pieceTopLeftY = centerY - (pieceHeight / 2);
-  const targetCol = Math.floor((pieceTopLeftX - boardRect.left) / (CELL_SIZE + GAP_SIZE));
-  const targetRow = Math.floor((pieceTopLeftY - boardRect.top) / (CELL_SIZE + GAP_SIZE));
+  if (!selectedPiece || !selectedPiece.color || !draggedPieceElement) return;
 
-  if (canPlacePiece(selectedPiece.matrix, targetRow, targetCol)) {
+  const boardRect = boardElement.getBoundingClientRect();
+  // Coordenadas del cursor relativas al tablero
+  const cursorRelativeToBoardX = pieceCenterX - boardRect.left;
+  const cursorRelativeToBoardY = pieceCenterY - boardRect.top;
+
+  let bestSnapPos = null;
+  let minDistanceSq = Infinity;
+
+  // Iterar sobre todas las celdas del tablero como posibles puntos de anclaje (esquina superior izquierda de la pieza)
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 10; c++) {
+      if (canPlacePiece(selectedPiece.matrix, r, c)) {
+        // Calcular el centro de la celda (r,c) del tablero en coordenadas de pantalla
+        const cellCenterX = boardRect.left + (c * (CELL_SIZE + GAP_SIZE)) + (CELL_SIZE / 2);
+        const cellCenterY = boardRect.top + (r * (CELL_SIZE + GAP_SIZE)) + (CELL_SIZE / 2);
+
+        // Para el "snap", consideramos la distancia desde el cursor (que sigue al dedo)
+        // hasta el centro de la *primera celda* de la pieza si se colocara en (r,c).
+        // Esto es una simplificación; una mejor heurística podría ser el centro de la pieza.
+        const distSq = (pieceCenterX - cellCenterX) ** 2 + (pieceCenterY - cellCenterY) ** 2;
+
+        if (distSq < minDistanceSq) {
+          minDistanceSq = distSq;
+          bestSnapPos = { row: r, col: c };
+        }
+      }
+    }
+  }
+
+  // Aplicar umbral de distancia para el "snap"
+  const snapThresholdPixels = SHADOW_SNAP_THRESHOLD_CELLS * (CELL_SIZE + GAP_SIZE);
+  if (bestSnapPos && Math.sqrt(minDistanceSq) < snapThresholdPixels * selectedPiece.matrix[0].length) { // Umbral más generoso
+    // Si encontramos una posición válida y está dentro del umbral, mostrar la sombra ahí
     const shadowColorRgba = hexToRgba(selectedPiece.color, 0.45);
-    for (let r = 0; r < selectedPiece.matrix.length; r++) {
-      for (let c = 0; c < selectedPiece.matrix[r].length; c++) {
-        if (selectedPiece.matrix[r][c] === 1) {
-          const boardR = targetRow + r;
-          const boardC = targetCol + c;
-          const cellElement = boardElement.querySelector(`[data-row='${boardR}'][data-col='${boardC}']`);
-          if (cellElement) {
-            if (!board[boardR][boardC]) {
-                 cellElement.style.backgroundColor = shadowColorRgba;
-                 cellElement.classList.add('shadow');
-                 currentShadowCells.push(cellElement);
-            } else {
-                // Si la celda está ocupada, podríamos no añadirla a currentShadowCells
-                // o poner una sombra diferente, o nada. Por ahora, no se sombrea.
+    for (let r_offset = 0; r_offset < selectedPiece.matrix.length; r_offset++) {
+      for (let c_offset = 0; c_offset < selectedPiece.matrix[r_offset].length; c_offset++) {
+        if (selectedPiece.matrix[r_offset][c_offset] === 1) {
+          const boardR = bestSnapPos.row + r_offset;
+          const boardC = bestSnapPos.col + c_offset;
+          // Doble verificación por si acaso, aunque canPlacePiece ya lo hizo
+          if (boardR < 10 && boardC < 10 && boardR >= 0 && boardC >= 0) {
+            const cellElement = boardElement.querySelector(`[data-row='${boardR}'][data-col='${boardC}']`);
+            if (cellElement && board[boardR][boardC] === 0) { // Sombrear solo si la celda está vacía
+              cellElement.style.backgroundColor = shadowColorRgba;
+              cellElement.classList.add('shadow');
+              currentShadowCells.push(cellElement);
             }
           }
         }
       }
     }
+  } else {
+    // Si no hay posición válida o está demasiado lejos, no mostrar sombra.
+    // `currentShadowCells` ya está vacío y la sombra anterior fue limpiada.
   }
 }
 
 async function dragEnd(event) {
   if (!draggedPieceElement) return;
 
-  // Limpiar sombra final antes de cualquier otra acción
+  // Limpiar la sombra visualmente ANTES de cualquier lógica de colocación.
   currentShadowCells.forEach(cell => {
     cell.classList.remove('shadow');
-    cell.style.backgroundColor = cell.dataset.pieceColor || '';
+    const r = parseInt(cell.dataset.row);
+    const c = parseInt(cell.dataset.col);
+    if (board[r][c] === 0) { // Solo limpiar si la celda del tablero está lógicamente vacía
+        cell.style.backgroundColor = ''; 
+    } else { // Si no, restaurar el color de la pieza que la ocupa
+        cell.style.backgroundColor = cell.dataset.pieceColor || ''; 
+    }
   });
-  currentShadowCells = [];
+  currentShadowCells = []; // Limpiar el array de celdas de sombra
 
   document.removeEventListener('mousemove', dragMove);
   document.removeEventListener('touchmove', dragMove, { passive: false });
   document.removeEventListener('mouseup', dragEnd);
   document.removeEventListener('touchend', dragEnd);
 
-  const clientX = event.clientX || (event.changedTouches && event.changedTouches[0].clientX);
-  const clientY = event.clientY || (event.changedTouches && event.changedTouches[0].clientY);
+  // const clientX = event.clientX || (event.changedTouches && event.changedTouches[0].clientX);
+  // const clientY = event.clientY || (event.changedTouches && event.changedTouches[0].clientY);
+  // Usar el centro de la pieza flotante para la lógica de colocación final
+  const draggedRect = draggedPieceElement.getBoundingClientRect();
+  const finalPieceCenterX = draggedRect.left + draggedRect.width / 2;
+  const finalPieceCenterY = draggedRect.top + draggedRect.height / 2;
 
   let placed = false;
-  if (selectedPiece && selectedPiece.color) { 
+  if (selectedPiece && selectedPiece.color) {
     const boardRect = boardElement.getBoundingClientRect();
-    const pieceWidth = draggedPieceElement ? draggedPieceElement.offsetWidth : (selectedPiece.matrix[0].length * 15 * 1.25); 
-    const pieceHeight = draggedPieceElement ? draggedPieceElement.offsetHeight : (selectedPiece.matrix.length * 15 * 1.25);
-
-    const pieceTopLeftX = clientX - (pieceWidth / 2);
-    const pieceTopLeftY = clientY - (pieceHeight / 2);
-
-    // AJUSTE: Eliminamos el + (CELL_SIZE / 2) para probar
-    const targetCol = Math.floor((pieceTopLeftX - boardRect.left) / (CELL_SIZE + GAP_SIZE));
-    const targetRow = Math.floor((pieceTopLeftY - boardRect.top) / (CELL_SIZE + GAP_SIZE));
     
-    // console.log(`Drop At: R${targetRow}, C${targetCol}`);
+    let bestPlacePos = null;
+    let minDistanceSqForPlacement = Infinity;
 
-    if (canPlacePiece(selectedPiece.matrix, targetRow, targetCol)) {
-      placePiece(selectedPiece.matrix, targetRow, targetCol, selectedPiece.color);
-      if (activePieceElement) activePieceElement.remove();
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 10; c++) {
+        if (canPlacePiece(selectedPiece.matrix, r, c)) {
+          // Centro de la celda (r,c) del tablero
+          const cellCenterX = boardRect.left + (c * (CELL_SIZE + GAP_SIZE)) + (CELL_SIZE / 2);
+          const cellCenterY = boardRect.top + (r * (CELL_SIZE + GAP_SIZE)) + (CELL_SIZE / 2);
+          // Distancia desde el centro de la pieza flotante al centro de la celda candidata
+          const distSq = (finalPieceCenterX - cellCenterX) ** 2 + (finalPieceCenterY - cellCenterY) ** 2;
+
+          if (distSq < minDistanceSqForPlacement) {
+            minDistanceSqForPlacement = distSq;
+            bestPlacePos = { row: r, col: c };
+          }
+        }
+      }
+    }
+
+    const placeThresholdPixels = SHADOW_SNAP_THRESHOLD_CELLS * (CELL_SIZE + GAP_SIZE);
+    if (bestPlacePos && Math.sqrt(minDistanceSqForPlacement) < placeThresholdPixels * selectedPiece.matrix[0].length) {
+      // Colocar la pieza en la mejor posición encontrada si está dentro del umbral
+      placePiece(selectedPiece.matrix, bestPlacePos.row, bestPlacePos.col, selectedPiece.color);
+      if (activePieceElement) activePieceElement.remove(); // Eliminar pieza de la lista de disponibles
       placed = true;
       
-      const linesWereCleared = await checkAndClearLines();
-      // Si se limpiaron líneas, updateScore ya fue llamado dentro de checkAndClearLines
-      // También podríamos querer mostrar los puntos flotantes aquí después del await
-      // if (linesWereCleared) {
-      //   showFloatingScore(linesClearedThisTurn * PUNTOS_POR_LINEA, targetRow, targetCol); // Ejemplo
-      // }
-
+      await checkAndClearLines(); // No necesitamos la variable linesWereCleared aquí por ahora
+      
       const newSinglePiece = generateSinglePieceElement();
       piecesElement.appendChild(newSinglePiece);
       
@@ -262,16 +325,19 @@ async function dragEnd(event) {
     }
   }
 
+  // Si no se colocó la pieza (fuera del umbral o no cabe), restaurar la pieza original en la lista
   if (!placed) {
     if (activePieceElement) {
       activePieceElement.classList.remove('hidden-original');
     }
   }
 
+  // Limpiar la pieza arrastrada del DOM
   if (draggedPieceElement && draggedPieceElement.parentNode === document.body) {
     document.body.removeChild(draggedPieceElement);
   }
   
+  // Resetear estado de arrastre
   draggedPieceElement = null;
   selectedPiece = null;
   activePieceElement = null;
@@ -300,11 +366,14 @@ function startDrag(event, pieceName, pieceMatrix, originalElement) {
   const clientX = event.clientX || event.touches[0].clientX;
   const clientY = event.clientY || event.touches[0].clientY;
 
-  // offsetX/Y ahora es la distancia desde la esquina sup-izq del *clon* a su *centro*.
   offsetX = draggedRect.width / 2;
-  offsetY = draggedRect.height / 2;
+  // offsetY = draggedRect.height / 2; // Original: centra la pieza en el cursor
+  // offsetY = draggedRect.height + 15; // Modificación anterior
+  // offsetY = draggedRect.height + (draggedRect.height / 2); // Modificación previa más reciente
 
-  // Posicionar el clon de forma que el punto del evento (clientX, clientY) coincida con su centro.
+  // Nuevo offsetY: Posiciona la pieza aún más arriba del punto de toque.
+  offsetY = draggedRect.height * 2; // Ejemplo: el toque está una altura de pieza por debajo de su borde inferior.
+
   draggedPieceElement.style.left = `${clientX - offsetX}px`;
   draggedPieceElement.style.top = `${clientY - offsetY}px`;
 
@@ -417,7 +486,7 @@ async function checkAndClearLines() {
     let linesClearedThisTurn = 0;
     const rowsToClearIndices = [];
     const colsToClearIndices = [];
-    const cellsToProcess = new Set();
+    const cellsToAnimateAndClear = new Set(); // Renombrado para claridad
 
     // 1. Identificar filas completas
     for (let r = 0; r < 10; r++) {
@@ -425,7 +494,7 @@ async function checkAndClearLines() {
             rowsToClearIndices.push(r);
             for (let c = 0; c < 10; c++) {
                 const cellElement = boardElement.querySelector(`[data-row='${r}'][data-col='${c}']`);
-                if (cellElement) cellsToProcess.add(cellElement);
+                if (cellElement) cellsToAnimateAndClear.add(cellElement);
             }
         }
     }
@@ -443,7 +512,7 @@ async function checkAndClearLines() {
             colsToClearIndices.push(c);
             for (let r = 0; r < 10; r++) {
                 const cellElement = boardElement.querySelector(`[data-row='${r}'][data-col='${c}']`);
-                if (cellElement) cellsToProcess.add(cellElement);
+                if (cellElement) cellsToAnimateAndClear.add(cellElement);
             }
         }
     }
@@ -453,6 +522,8 @@ async function checkAndClearLines() {
     colsToClearIndices.forEach(c_idx => {
         let isNewColLine = false;
         for (let r_idx = 0; r_idx < 10; r_idx++) {
+            // Contamos una columna como una nueva línea si no es parte de una fila ya contada
+            // y si la celda en esa columna (y cualquier fila) estaba ocupada.
             if (!rowsToClearIndices.includes(r_idx) && board[r_idx][c_idx] === 1) {
                 isNewColLine = true;
                 break;
@@ -463,59 +534,41 @@ async function checkAndClearLines() {
         }
     });
     console.log(`Líneas calculadas para puntaje: ${linesClearedThisTurn}`);
-    console.log(`Celdas a procesar (animar/limpiar): ${cellsToProcess.size}`);
+    console.log(`Celdas a animar y limpiar: ${cellsToAnimateAndClear.size}`);
 
-    if (cellsToProcess.size > 0) {
-        // 4. Aplicar animación
-        cellsToProcess.forEach(cellElement => {
-            const pieceBlock = cellElement.querySelector('.piece-block');
-            if (pieceBlock) {
-                console.log("Aplicando animación a piece-block en celda:", cellElement.dataset.row, cellElement.dataset.col);
-                pieceBlock.style.backgroundColor = ''; // Crucial para que la animación tome el control
-            } else {
-                console.warn("No se encontró piece-block en celda:", cellElement.dataset.row, cellElement.dataset.col);
-            }
-            cellElement.classList.add('line-clearing');
+    if (cellsToAnimateAndClear.size > 0) {
+        // 4. Aplicar animación de desvanecimiento
+        cellsToAnimateAndClear.forEach(cellElement => {
+            // La animación de desvanecimiento se aplica directamente a la celda.
+            // Ya no buscamos un '.piece-block' dentro, asumimos que el color está en la celda.
+            cellElement.classList.add('line-fade-out');
         });
 
-        console.log("Clase 'line-clearing' añadida. Esperando animación...");
+        console.log("Clase 'line-fade-out' añadida. Esperando animación...");
         // 5. Esperar que la animación termine
         await new Promise(resolve => setTimeout(resolve, ANIMATION_DURATION));
         console.log("...Animación terminada (según setTimeout).");
 
         // 6. Limpieza final después de la animación
         console.log("Iniciando limpieza post-animación.");
-        cellsToProcess.forEach(cellElement => {
+        cellsToAnimateAndClear.forEach(cellElement => {
             const row = parseInt(cellElement.dataset.row);
             const col = parseInt(cellElement.dataset.col);
             console.log(`Limpiando celda: R${row}, C${col}`);
 
-            board[row][col] = 0;
-            cellElement.style.backgroundColor = '';
-            delete cellElement.dataset.pieceColor;
-            cellElement.classList.remove('line-clearing');
-
-            const pieceBlock = cellElement.querySelector('.piece-block');
-            if (pieceBlock) {
-                console.log("Eliminando piece-block de celda:", cellElement.dataset.row, cellElement.dataset.col);
-                pieceBlock.remove();
-            } else {
-                 console.warn("No se encontró piece-block para eliminar en celda:", cellElement.dataset.row, cellElement.dataset.col, "(ya podría haber sido removido o la estructura cambió)");
-            }
+            board[row][col] = 0; // Marcar como vacía en la lógica
+            cellElement.style.backgroundColor = ''; // Limpiar color de fondo
+            delete cellElement.dataset.pieceColor; // Limpiar el color guardado
+            cellElement.classList.remove('line-fade-out'); // Quitar clase de animación
+            cellElement.classList.remove('piece-block'); // Quitar clase que la marca como bloque de pieza
+            // Importante: Asegurar que la opacidad se restaura si la animación la cambió
+            cellElement.style.opacity = ''; // Restablecer opacidad a su valor por defecto (o el que dicte CSS)
         });
 
         if (linesClearedThisTurn > 0) {
-            console.log(`Actualizando puntaje con ${linesClearedThisTurn} líneas.`);
+            console.log(`${linesClearedThisTurn} línea(s) eliminada(s). Actualizando puntaje...`);
             updateScore(linesClearedThisTurn);
-        } else {
-            console.log("No hay líneas para puntuar este turno, aunque hubo celdas procesadas.");
         }
-        console.log("--- checkAndClearLines FIN (con limpieza) ---");
-        return linesClearedThisTurn > 0;
-    } else {
-        console.log("No hay celdas para procesar.");
-        console.log("--- checkAndClearLines FIN (sin limpieza) ---");
-        return false; // No se limpiaron líneas
     }
 }
 
@@ -534,7 +587,7 @@ function updateScore(clearedLinesCount) {
 }
 
 function handleGameOver() {
-  // Detener cualquier posible arrastre en curso (aunque no debería haberlo si no hay movimientos válidos)
+  // Detener cualquier posible arrastre en curso
   if (draggedPieceElement && draggedPieceElement.parentNode === document.body) {
     document.body.removeChild(draggedPieceElement);
     if (activePieceElement) {
@@ -551,16 +604,12 @@ function handleGameOver() {
   document.removeEventListener('mouseup', dragEnd);
   document.removeEventListener('touchend', dragEnd);
 
-  // Deshabilitar la creación de nuevas piezas o interacciones futuras (más robusto sería con flags)
-  // Por ahora, el alert bloqueará la ejecución.
-  setTimeout(() => { // Usar setTimeout para asegurar que cualquier actualización de UI pendiente se complete
-    alert(`¡Juego Terminado!\nPuntaje Final: ${score}`);
-    // Aquí podrías añadir un botón de "Reiniciar Juego" o similar
-    // Por ejemplo, podríamos recargar la página para un reinicio simple:
-    // if (confirm("¿Jugar de nuevo?")) {
-    //   window.location.reload();
-    // }
-  }, 100); // Pequeño delay
+  // Mostrar el modal de Game Over
+  finalScoreElement.textContent = `Puntaje Final: ${score}`;
+  gameOverModal.style.display = 'flex'; // Cambiado para usar el display original del CSS para centrar
+  setTimeout(() => { // Pequeño delay para permitir que el display:flex se aplique antes de la transición de opacidad
+    gameOverModal.classList.add('visible');
+  }, 20); 
 }
 
 function checkGameOver() {
@@ -607,4 +656,11 @@ function boardIsEmpty() {
 
 scoreElement.textContent = `Puntos: ${score}`;
 displayPieces();
-checkGameOver(); 
+checkGameOver();
+
+// Event Listener para el botón de reiniciar (añadir al final del script o dentro de un DOMContentLoaded)
+if (restartGameButton) { // Verificar que el botón exista
+    restartGameButton.addEventListener('click', () => {
+        window.location.reload(); // Recarga la página para reiniciar
+    });
+}

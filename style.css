@@ -1,12 +1,19 @@
 body {
-  font-family: sans-serif;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   text-align: center;
-  background-color: #f2f2f2;
+  background: linear-gradient(to bottom right, #6D5B97, #A77DBA);
+  color: #ffffff;
+  margin: 0;
+  padding-top: 20px;
 }
 
 #game-container {
   display: inline-block;
   margin-top: 20px;
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 25px;
+  border-radius: 15px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
 }
 
 #board {
@@ -14,15 +21,19 @@ body {
   grid-template-columns: repeat(10, 30px);
   grid-template-rows: repeat(10, 30px);
   gap: 2px;
-  background-color: #ccc;
-  margin-bottom: 20px;
+  background-color: #2C2A4A;
+  margin-bottom: 25px;
+  border: 3px solid #1e1c33;
+  border-radius: 8px;
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
 }
 
 .cell {
   width: 30px;
   height: 30px;
-  background-color: white; /* Color base de celda vacía */
-  border: 1px solid #999;
+  background-color: #4F4A72;
+  border-radius: 3px;
+  box-shadow: inset 0 0 4px rgba(0,0,0,0.3);
 }
 
 #pieces {
@@ -48,12 +59,12 @@ body {
 
 /* Estilos para la pieza mientras se arrastra */
 .piece.dragging {
-  position: absolute; /* Esencial para moverla libremente */
-  pointer-events: none; /* Para que no interfiera con eventos mousemove sobre otros elementos */
-  z-index: 1000; /* Para que esté por encima de otros elementos */
-  opacity: 0.8; /* Ligeramente más opaca para mejor visibilidad */
-  transform: scale(1.25); /* Aumentado para mayor notoriedad */
-  box-shadow: 0px 6px 12px rgba(0, 0, 0, 0.055); /* Sombra para efecto de elevación */
+  position: absolute;
+  pointer-events: none;
+  z-index: 1000;
+  opacity: 0.8;
+  transform: scale(1.25);
+  box-shadow: 0px 6px 12px rgba(0, 0, 0, 0.055);
   /* Las celdas internas mantendrán su tamaño original del clon (15px) y se escalarán con el transform */
 }
 
@@ -66,35 +77,113 @@ body {
 #score {
   margin-top: 10px;
   font-weight: bold;
+  font-size: 1.2em;
+  color: #FFEB3B;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
 }
 
 /* Estilo para los bloques individuales de las piezas */
 .piece-block {
-  /* Simular un ligero biselado/relieve */
-  border-top: 1px solid rgba(255, 255, 255, 0.3);
-  border-left: 1px solid rgba(255, 255, 255, 0.3);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.2);
-  border-right: 1px solid rgba(0, 0, 0, 0.2);
-  box-sizing: border-box; /* Para que el borde no aumente el tamaño total */
+  box-sizing: border-box;
+  border-radius: 3px;
+  box-shadow: inset 0px 2px 2px rgba(255, 255, 255, 0.3),
+              inset 0px -2px 2px rgba(0, 0, 0, 0.2),
+              2px 2px 5px rgba(0,0,0,0.3);
+  transition: transform 0.1s ease-out;
 }
 
-/* Animación para líneas completadas */
-@keyframes line-clear-animation {
-  0% { background-color: white; transform: scale(1.1); opacity: 1; }
-  25% { opacity: 0.5; }
-  50% { background-color: white; transform: scale(1.1); opacity: 1; }
-  75% { opacity: 0.5; }
-  100% { transform: scale(0); opacity: 0; }
+/* Podríamos añadir un efecto al pasar el mouse sobre las piezas en la lista */
+#pieces .piece:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 15px rgba(255,255,255,0.5);
 }
 
-.cell.line-clearing .piece-block {
-  /* Aplicamos la animación a los .piece-block dentro de las celdas marcadas */
-  /* Esto permite que el fondo de la celda base no interfiera */
-  animation-name: line-clear-animation;
-  animation-duration: 0.6s; /* Duración de la animación */
-  animation-fill-mode: forwards; /* Mantiene el estado final de la animación */
-  animation-timing-function: ease-in-out;
+/* Animación para líneas completadas - DESVANECIMIENTO */
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.line-fade-out {
+  animation: fadeOut 0.5s forwards;
+  /* Asegúrate de que la duración (0.5s) coincida con ANIMATION_DURATION en script.js */
 }
 
 /* Si la celda en sí necesita algún estilo durante la animación (poco probable con el target en .piece-block) */
-/* .cell.line-clearing { ... } */ 
+/* .cell.line-clearing { ... } */
+
+/* Estilos para el Modal de Game Over */
+.modal-overlay {
+  position: fixed; /* Cubre toda la pantalla */
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.75); /* Fondo oscuro semi-transparente */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000; /* Encima de todo */
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.modal-overlay.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.modal-content {
+  background: linear-gradient(to bottom right, #524079, #775a8a); /* Mismo degradado que el fondo pero más oscuro/intenso */
+  padding: 30px 40px;
+  border-radius: 15px;
+  box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+  text-align: center;
+  color: #ffffff;
+  transform: scale(0.9);
+  transition: transform 0.3s ease-out;
+}
+
+.modal-overlay.visible .modal-content {
+    transform: scale(1);
+}
+
+.modal-content h2 {
+  margin-top: 0;
+  color: #FFEB3B; /* Amarillo, como el puntaje */
+  font-size: 2.5em;
+  margin-bottom: 15px;
+}
+
+.modal-content p {
+  font-size: 1.4em;
+  margin-bottom: 25px;
+}
+
+#restartGameButton {
+  background-color: #FFEB3B; /* Amarillo */
+  color: #333333; /* Texto oscuro */
+  border: none;
+  padding: 12px 25px;
+  font-size: 1.1em;
+  font-weight: bold;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+#restartGameButton:hover {
+  background-color: #FFD700; /* Amarillo más oscuro al pasar el mouse */
+  transform: translateY(-2px);
+}
+
+#restartGameButton:active {
+  transform: translateY(0px);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+} 
