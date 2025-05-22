@@ -132,7 +132,9 @@ const PIECE_COLORS = ['#EF5350', '#4CAF50', '#2196F3', '#FFEB3B', '#9C27B0', '#0
 let selectedPiece = null;
 let activePieceElement = null; // Elemento DOM de la pieza en la lista #pieces
 let draggedPieceElement = null; // Elemento DOM clonado que se arrastra
-let offsetX, offsetY; // Para un arrastre más natural
+let offsetX, offsetY;
+let lastClientX, lastClientY; // Para calcular deltas en dragMove
+const HORIZONTAL_DRAG_SENSITIVITY = 1.2; // Mueve la pieza 1.2x más rápido horizontalmente que el dedo
 
 const piecesElement = document.getElementById("pieces");
 const pieceKeys = Object.keys(PIECES); // Nombres de las piezas: ['I', 'L', 'J', ...]
@@ -142,8 +144,11 @@ const GAP_SIZE = 2;   // Tamaño del gap entre celdas del tablero en píxeles
 
 let currentShadowCells = [];
 const SHADOW_SNAP_THRESHOLD_CELLS = 1.5; // Umbral para "ajustar" la sombra, en unidades de celdas
+let highlightedPreCompleteCells = []; // Para celdas de previsualización de líneas completas
+const PREVIEW_LINE_COLOR = 'rgba(144, 238, 144, 0.8)'; // Verde claro para previsualización
 
 const ANIMATION_DURATION = 500; // ms, DEBE COINCIDIR CON CSS (antes 2000ms, ahora 0.5s)
+const FLOATING_SCORE_ANIMATION_DURATION = 1200; // ms, debe coincidir con CSS para .floating-score-animation
 
 // Función de ayuda para convertir HEX a RGBA
 function hexToRgba(hex, alpha = 1) {
@@ -166,83 +171,169 @@ function dragMove(event) {
   if (!draggedPieceElement) return;
   event.preventDefault();
 
-  const clientX = event.clientX || event.touches[0].clientX;
-  const clientY = event.clientY || event.touches[0].clientY;
+  const currentClientX = event.clientX || event.touches[0].clientX;
+  const currentClientY = event.clientY || event.touches[0].clientY;
 
-  // El clon se mueve para que su esquina superior izquierda esté en clientX - offsetX, clientY - offsetY
-  const newPieceLeft = clientX - offsetX;
-  const newPieceTop = clientY - offsetY;
+  let deltaX = 0;
+  let deltaY = 0;
+
+  // Solo calcular delta si lastClientX/Y ya están definidos (es decir, no es el primer frame de arrastre)
+  if (typeof lastClientX !== 'undefined') {
+    deltaX = currentClientX - lastClientX;
+    deltaY = currentClientY - lastClientY;
+  }
+
+  // Aplicar sensibilidad al movimiento horizontal
+  const newPieceLeft = parseFloat(draggedPieceElement.style.left) + (deltaX * HORIZONTAL_DRAG_SENSITIVITY);
+  const newPieceTop = parseFloat(draggedPieceElement.style.top) + deltaY; 
+
   draggedPieceElement.style.left = `${newPieceLeft}px`;
   draggedPieceElement.style.top = `${newPieceTop}px`;
 
-  // Calcular el NUEVO centro de la pieza flotante para la sombra
+  lastClientX = currentClientX;
+  lastClientY = currentClientY;
+
   const draggedRect = draggedPieceElement.getBoundingClientRect();
   const pieceCenterX = draggedRect.left + draggedRect.width / 2;
   const pieceCenterY = draggedRect.top + draggedRect.height / 2;
 
-  updatePieceShadow(pieceCenterX, pieceCenterY); // Pasar el centro de la pieza flotante
+  updatePieceShadow(pieceCenterX, pieceCenterY);
 }
 
 function updatePieceShadow(pieceCenterX, pieceCenterY) {
   // Limpiar sombra anterior
   currentShadowCells.forEach(cell => {
     cell.classList.remove('shadow');
-    // Restaura el color original solo si no está ocupada por una pieza real
     const r = parseInt(cell.dataset.row);
     const c = parseInt(cell.dataset.col);
-    if (board[r][c] === 0) {
-        cell.style.backgroundColor = ''; // O el color de celda vacía si es diferente a ''
+    if (board[r][c] === 0) { 
+        cell.style.backgroundColor = ''; 
     } else {
-        cell.style.backgroundColor = cell.dataset.pieceColor || ''; // Color de la pieza que la ocupa
+        cell.style.backgroundColor = cell.dataset.pieceColor || ''; 
     }
   });
   currentShadowCells = [];
 
+  // Limpiar resaltado de previsualización de líneas anterior
+  highlightedPreCompleteCells.forEach(cellInfo => {
+    // Restaurar el color original guardado
+    if (cellInfo.element) { // Asegurarse de que el elemento aún exista
+        cellInfo.element.style.backgroundColor = cellInfo.originalColor;
+    }
+  });
+  highlightedPreCompleteCells = [];
+
   if (!selectedPiece || !selectedPiece.color || !draggedPieceElement) return;
+  // console.log("Update Shadow for:", selectedPiece.name, "at", pieceCenterX, pieceCenterY);
 
   const boardRect = boardElement.getBoundingClientRect();
-  // Coordenadas del cursor relativas al tablero
   const cursorRelativeToBoardX = pieceCenterX - boardRect.left;
   const cursorRelativeToBoardY = pieceCenterY - boardRect.top;
 
   let bestSnapPos = null;
   let minDistanceSq = Infinity;
 
-  // Iterar sobre todas las celdas del tablero como posibles puntos de anclaje (esquina superior izquierda de la pieza)
-  for (let r = 0; r < 10; r++) {
-    for (let c = 0; c < 10; c++) {
-      if (canPlacePiece(selectedPiece.matrix, r, c)) {
-        // Calcular el centro de la celda (r,c) del tablero en coordenadas de pantalla
-        const cellCenterX = boardRect.left + (c * (CELL_SIZE + GAP_SIZE)) + (CELL_SIZE / 2);
-        const cellCenterY = boardRect.top + (r * (CELL_SIZE + GAP_SIZE)) + (CELL_SIZE / 2);
-
-        // Para el "snap", consideramos la distancia desde el cursor (que sigue al dedo)
-        // hasta el centro de la *primera celda* de la pieza si se colocara en (r,c).
-        // Esto es una simplificación; una mejor heurística podría ser el centro de la pieza.
-        const distSq = (pieceCenterX - cellCenterX) ** 2 + (pieceCenterY - cellCenterY) ** 2;
-
+  for (let r_board = 0; r_board < 10; r_board++) {
+    for (let c_board = 0; c_board < 10; c_board++) {
+      if (canPlacePiece(selectedPiece.matrix, r_board, c_board)) {
+        const cellRectCenterX = boardRect.left + (c_board * (CELL_SIZE + GAP_SIZE)) + (CELL_SIZE / 2);
+        const cellRectCenterY = boardRect.top + (r_board * (CELL_SIZE + GAP_SIZE)) + (CELL_SIZE / 2);
+        const distSq = (pieceCenterX - cellRectCenterX) ** 2 + (pieceCenterY - cellRectCenterY) ** 2;
         if (distSq < minDistanceSq) {
           minDistanceSq = distSq;
-          bestSnapPos = { row: r, col: c };
+          bestSnapPos = { row: r_board, col: c_board };
         }
       }
     }
   }
 
-  // Aplicar umbral de distancia para el "snap"
   const snapThresholdPixels = SHADOW_SNAP_THRESHOLD_CELLS * (CELL_SIZE + GAP_SIZE);
-  if (bestSnapPos && Math.sqrt(minDistanceSq) < snapThresholdPixels * selectedPiece.matrix[0].length) { // Umbral más generoso
-    // Si encontramos una posición válida y está dentro del umbral, mostrar la sombra ahí
+  if (bestSnapPos && Math.sqrt(minDistanceSq) < snapThresholdPixels * selectedPiece.matrix[0].length) {
+    console.log("Best snap pos:", bestSnapPos.row, bestSnapPos.col);
+    const tempBoard = board.map(row => [...row]);
+    for (let r_piece = 0; r_piece < selectedPiece.matrix.length; r_piece++) {
+      for (let c_piece = 0; c_piece < selectedPiece.matrix[r_piece].length; c_piece++) {
+        if (selectedPiece.matrix[r_piece][c_piece] === 1) {
+          const boardR = bestSnapPos.row + r_piece;
+          const boardC = bestSnapPos.col + c_piece;
+          if (boardR < 10 && boardC < 10 && boardR >= 0 && boardC >= 0) { 
+            tempBoard[boardR][boardC] = 1; 
+          }
+        }
+      }
+    }
+    // console.log("Temp board after simulated placement:", JSON.parse(JSON.stringify(tempBoard))); // Para ver el estado
+    
+    const { completedRows, completedCols } = checkPotentialLines(tempBoard, bestSnapPos, selectedPiece.matrix);
+    console.log("Potential lines - Rows:", completedRows, "Cols:", completedCols);
+
+    if (completedRows.length > 0 || completedCols.length > 0) {
+        console.log("Found potential lines to highlight!");
+        completedRows.forEach(r_idx => {
+            for (let c_idx = 0; c_idx < 10; c_idx++) {
+                let isPartOfCurrentPiece = false;
+                for (let r_p = 0; r_p < selectedPiece.matrix.length; r_p++) {
+                    for (let c_p = 0; c_p < selectedPiece.matrix[r_p].length; c_p++) {
+                        if (selectedPiece.matrix[r_p][c_p] === 1 && 
+                            bestSnapPos.row + r_p === r_idx && 
+                            bestSnapPos.col + c_p === c_idx) {
+                            isPartOfCurrentPiece = true; break;
+                        }
+                    }
+                    if (isPartOfCurrentPiece) break;
+                }
+
+                if (!isPartOfCurrentPiece) {
+                    const cellElement = boardElement.querySelector(`[data-row='${r_idx}'][data-col='${c_idx}']`);
+                    if (cellElement) { // Condición original: && board[r_idx][c_idx] === 0. Eliminada para resaltar celdas ocupadas.
+                        const originalBg = cellElement.style.backgroundColor || ''; // Guardar BG original o '' si no hay inline
+                        console.log(`Highlighting cell for PREVIEW R:${r_idx}, C:${c_idx}. Original BG: ${originalBg}`);
+                        cellElement.style.backgroundColor = PREVIEW_LINE_COLOR;
+                        highlightedPreCompleteCells.push({element: cellElement, row: r_idx, col: c_idx, originalColor: originalBg });
+                    }
+                }
+            }
+        });
+        completedCols.forEach(c_idx => {
+            for (let r_idx = 0; r_idx < 10; r_idx++) {
+                let isPartOfCurrentPiece = false;
+                for (let r_p = 0; r_p < selectedPiece.matrix.length; r_p++) {
+                    for (let c_p = 0; c_p < selectedPiece.matrix[r_p].length; c_p++) {
+                        if (selectedPiece.matrix[r_p][c_p] === 1 && 
+                            bestSnapPos.row + r_p === r_idx && 
+                            bestSnapPos.col + c_p === c_idx) {
+                            isPartOfCurrentPiece = true; break;
+                        }
+                    }
+                    if (isPartOfCurrentPiece) break;
+                }
+                // Evitar doble resaltado si ya está en una fila completada
+                const alreadyHighlighted = highlightedPreCompleteCells.some(info => info.row === r_idx && info.col === c_idx);
+                if (!isPartOfCurrentPiece && !alreadyHighlighted) {
+                    const cellElement = boardElement.querySelector(`[data-row='${r_idx}'][data-col='${c_idx}']`);
+                    if (cellElement) { // Condición original: && board[r_idx][c_idx] === 0. Eliminada.
+                         const originalBg = cellElement.style.backgroundColor || ''; // Guardar BG original o ''
+                         console.log(`Highlighting cell for PREVIEW R:${r_idx}, C:${c_idx}. Original BG: ${originalBg}`);
+                        cellElement.style.backgroundColor = PREVIEW_LINE_COLOR;
+                        highlightedPreCompleteCells.push({element: cellElement, row: r_idx, col: c_idx, originalColor: originalBg });
+                    }
+                }
+            }
+        });
+    } else {
+        // console.log("No potential lines to highlight.");
+    }
+
+    // Dibujar sombra normal de la pieza (esto podría sobrescribir el PREVIEW_LINE_COLOR en las celdas de la pieza, lo cual está bien)
     const shadowColorRgba = hexToRgba(selectedPiece.color, 0.45);
     for (let r_offset = 0; r_offset < selectedPiece.matrix.length; r_offset++) {
       for (let c_offset = 0; c_offset < selectedPiece.matrix[r_offset].length; c_offset++) {
         if (selectedPiece.matrix[r_offset][c_offset] === 1) {
-          const boardR = bestSnapPos.row + r_offset;
-          const boardC = bestSnapPos.col + c_offset;
-          // Doble verificación por si acaso, aunque canPlacePiece ya lo hizo
-          if (boardR < 10 && boardC < 10 && boardR >= 0 && boardC >= 0) {
-            const cellElement = boardElement.querySelector(`[data-row='${boardR}'][data-col='${boardC}']`);
-            if (cellElement && board[boardR][boardC] === 0) { // Sombrear solo si la celda está vacía
+          const boardR_shadow = bestSnapPos.row + r_offset;
+          const boardC_shadow = bestSnapPos.col + c_offset;
+          if (boardR_shadow < 10 && boardC_shadow < 10 && boardR_shadow >= 0 && boardC_shadow >= 0) {
+            const cellElement = boardElement.querySelector(`[data-row='${boardR_shadow}'][data-col='${boardC_shadow}']`);
+            if (cellElement && board[boardR_shadow][boardC_shadow] === 0) { 
               cellElement.style.backgroundColor = shadowColorRgba;
               cellElement.classList.add('shadow');
               currentShadowCells.push(cellElement);
@@ -252,58 +343,100 @@ function updatePieceShadow(pieceCenterX, pieceCenterY) {
       }
     }
   } else {
-    // Si no hay posición válida o está demasiado lejos, no mostrar sombra.
-    // `currentShadowCells` ya está vacío y la sombra anterior fue limpiada.
+    // console.log("No valid snap position or too far for shadow.");
   }
+}
+
+// Nueva función auxiliar para verificar líneas potenciales
+function checkPotentialLines(tempBoard, piecePos, pieceMatrix) {
+    // console.log("Checking potential lines with tempBoard:", JSON.parse(JSON.stringify(tempBoard)));
+    const completedRows = [];
+    const completedCols = [];
+    const pieceCells = []; // Celdas ocupadas por la pieza que se está previsualizando
+
+    for (let r = 0; r < pieceMatrix.length; r++) {
+        for (let c = 0; c < pieceMatrix[r].length; c++) {
+            if (pieceMatrix[r][c] === 1) {
+                pieceCells.push({row: piecePos.row + r, col: piecePos.col + c});
+            }
+        }
+    }
+
+    // Verificar filas
+    for (let r = 0; r < 10; r++) {
+        if (tempBoard[r].every(cellState => cellState === 1)) {
+            completedRows.push(r);
+        }
+    }
+    // Verificar columnas
+    for (let c = 0; c < 10; c++) {
+        let colIsFull = true;
+        for (let r = 0; r < 10; r++) {
+            if (tempBoard[r][c] === 0) {
+                colIsFull = false;
+                break;
+            }
+        }
+        if (colIsFull) {
+            completedCols.push(c);
+        }
+    }
+    return { completedRows, completedCols };
 }
 
 async function dragEnd(event) {
   if (!draggedPieceElement) return;
 
-  // Limpiar la sombra visualmente ANTES de cualquier lógica de colocación.
+  // Limpiar resaltado de previsualización de líneas ANTES de cualquier otra cosa
+  highlightedPreCompleteCells.forEach(cellInfo => {
+    // Restaurar el color original guardado
+    // Solo restaurar si la celda está actualmente con el color de previsualización
+    // y si el elemento existe por si acaso.
+    if (cellInfo.element && cellInfo.element.style.backgroundColor.toLowerCase() === PREVIEW_LINE_COLOR.toLowerCase()) {
+        cellInfo.element.style.backgroundColor = cellInfo.originalColor;
+    }
+  });
+  highlightedPreCompleteCells = [];
+
+  // Limpiar la sombra visualmente de la pieza que se arrastraba
   currentShadowCells.forEach(cell => {
     cell.classList.remove('shadow');
-    const r = parseInt(cell.dataset.row);
-    const c = parseInt(cell.dataset.col);
-    if (board[r][c] === 0) { // Solo limpiar si la celda del tablero está lógicamente vacía
+    const r_cell = parseInt(cell.dataset.row);
+    const c_cell = parseInt(cell.dataset.col);
+    if (board[r_cell][c_cell] === 0) { 
         cell.style.backgroundColor = ''; 
-    } else { // Si no, restaurar el color de la pieza que la ocupa
+    } else { 
         cell.style.backgroundColor = cell.dataset.pieceColor || ''; 
     }
   });
-  currentShadowCells = []; // Limpiar el array de celdas de sombra
+  currentShadowCells = [];
 
   document.removeEventListener('mousemove', dragMove);
   document.removeEventListener('touchmove', dragMove, { passive: false });
   document.removeEventListener('mouseup', dragEnd);
   document.removeEventListener('touchend', dragEnd);
 
-  // const clientX = event.clientX || (event.changedTouches && event.changedTouches[0].clientX);
-  // const clientY = event.clientY || (event.changedTouches && event.changedTouches[0].clientY);
-  // Usar el centro de la pieza flotante para la lógica de colocación final
-  const draggedRect = draggedPieceElement.getBoundingClientRect();
+  const draggedRect = draggedPieceElement.getBoundingClientRect(); // Obtener rect aquí, después de quitar listeners
   const finalPieceCenterX = draggedRect.left + draggedRect.width / 2;
   const finalPieceCenterY = draggedRect.top + draggedRect.height / 2;
 
   let placed = false;
   if (selectedPiece && selectedPiece.color) {
-    const boardRect = boardElement.getBoundingClientRect();
+    const boardRect_dragEnd = boardElement.getBoundingClientRect();
     
     let bestPlacePos = null;
     let minDistanceSqForPlacement = Infinity;
 
-    for (let r = 0; r < 10; r++) {
-      for (let c = 0; c < 10; c++) {
-        if (canPlacePiece(selectedPiece.matrix, r, c)) {
-          // Centro de la celda (r,c) del tablero
-          const cellCenterX = boardRect.left + (c * (CELL_SIZE + GAP_SIZE)) + (CELL_SIZE / 2);
-          const cellCenterY = boardRect.top + (r * (CELL_SIZE + GAP_SIZE)) + (CELL_SIZE / 2);
-          // Distancia desde el centro de la pieza flotante al centro de la celda candidata
-          const distSq = (finalPieceCenterX - cellCenterX) ** 2 + (finalPieceCenterY - cellCenterY) ** 2;
+    for (let r_board = 0; r_board < 10; r_board++) {
+      for (let c_board = 0; c_board < 10; c_board++) {
+        if (canPlacePiece(selectedPiece.matrix, r_board, c_board)) {
+          const cellRectCenterX = boardRect_dragEnd.left + (c_board * (CELL_SIZE + GAP_SIZE)) + (CELL_SIZE / 2);
+          const cellRectCenterY = boardRect_dragEnd.top + (r_board * (CELL_SIZE + GAP_SIZE)) + (CELL_SIZE / 2);
+          const distSq = (finalPieceCenterX - cellRectCenterX) ** 2 + (finalPieceCenterY - cellRectCenterY) ** 2;
 
           if (distSq < minDistanceSqForPlacement) {
             minDistanceSqForPlacement = distSq;
-            bestPlacePos = { row: r, col: c };
+            bestPlacePos = { row: r_board, col: c_board };
           }
         }
       }
@@ -311,12 +444,11 @@ async function dragEnd(event) {
 
     const placeThresholdPixels = SHADOW_SNAP_THRESHOLD_CELLS * (CELL_SIZE + GAP_SIZE);
     if (bestPlacePos && Math.sqrt(minDistanceSqForPlacement) < placeThresholdPixels * selectedPiece.matrix[0].length) {
-      // Colocar la pieza en la mejor posición encontrada si está dentro del umbral
       placePiece(selectedPiece.matrix, bestPlacePos.row, bestPlacePos.col, selectedPiece.color);
-      if (activePieceElement) activePieceElement.remove(); // Eliminar pieza de la lista de disponibles
+      if (activePieceElement) activePieceElement.remove(); 
       placed = true;
       
-      await checkAndClearLines(); // No necesitamos la variable linesWereCleared aquí por ahora
+      await checkAndClearLines(); 
       
       const newSinglePiece = generateSinglePieceElement();
       piecesElement.appendChild(newSinglePiece);
@@ -325,19 +457,16 @@ async function dragEnd(event) {
     }
   }
 
-  // Si no se colocó la pieza (fuera del umbral o no cabe), restaurar la pieza original en la lista
   if (!placed) {
     if (activePieceElement) {
       activePieceElement.classList.remove('hidden-original');
     }
   }
 
-  // Limpiar la pieza arrastrada del DOM
   if (draggedPieceElement && draggedPieceElement.parentNode === document.body) {
     document.body.removeChild(draggedPieceElement);
   }
   
-  // Resetear estado de arrastre
   draggedPieceElement = null;
   selectedPiece = null;
   activePieceElement = null;
@@ -349,36 +478,39 @@ function startDrag(event, pieceName, pieceMatrix, originalElement) {
   if (draggedPieceElement) return;
   event.preventDefault();
 
+  // Obtener clientX/Y del evento actual
+  const eventClientX = event.clientX || event.touches[0].clientX;
+  const eventClientY = event.clientY || event.touches[0].clientY;
+
+  // Guardar las posiciones iniciales del cliente para el cálculo de delta en dragMove
+  lastClientX = eventClientX;
+  lastClientY = eventClientY;
+
   const pieceColor = originalElement.pieceColor;
   selectedPiece = { name: pieceName, matrix: pieceMatrix, color: pieceColor };
   activePieceElement = originalElement;
 
   draggedPieceElement = activePieceElement.cloneNode(true);
+  draggedPieceElement.classList.remove('available-piece-glow'); // Quitar animación de brillo del clon
   draggedPieceElement.pieceColor = pieceColor; 
   draggedPieceElement.classList.add('dragging'); // El estilo .dragging ya aplica la escala
   document.body.appendChild(draggedPieceElement);
 
-  // Posicionar el clon para que el evento (dedo/cursor) esté en su centro.
-  // Primero, obtener dimensiones del clon DESPUÉS de que se haya aplicado la clase .dragging.
-  // Para ello, forzamos un reflow/repaint si es necesario, o esperamos que las dimensiones estén disponibles.
-  // Una forma simple es obtenerlas después de añadirlo al DOM y aplicar la clase.
   const draggedRect = draggedPieceElement.getBoundingClientRect();
-  const clientX = event.clientX || event.touches[0].clientX;
-  const clientY = event.clientY || event.touches[0].clientY;
-
   offsetX = draggedRect.width / 2;
-  // offsetY = draggedRect.height / 2; // Original: centra la pieza en el cursor
-  // offsetY = draggedRect.height + 15; // Modificación anterior
-  // offsetY = draggedRect.height + (draggedRect.height / 2); // Modificación previa más reciente
+  offsetY = draggedRect.height * 2;
 
-  // Nuevo offsetY: Posiciona la pieza aún más arriba del punto de toque.
-  offsetY = draggedRect.height * 2; // Ejemplo: el toque está una altura de pieza por debajo de su borde inferior.
-
-  draggedPieceElement.style.left = `${clientX - offsetX}px`;
-  draggedPieceElement.style.top = `${clientY - offsetY}px`;
+  // Posicionar la pieza inicialmente con el offset aplicado
+  draggedPieceElement.style.left = `${eventClientX - offsetX}px`;
+  draggedPieceElement.style.top = `${eventClientY - offsetY}px`;
 
   activePieceElement.classList.add('hidden-original'); 
-  updatePieceShadow(clientX, clientY); // clientX, clientY es donde está el centro de la pieza
+  
+  // Para la primera llamada a updatePieceShadow, usamos el centro de la pieza ya posicionada
+  const initialDraggedRect = draggedPieceElement.getBoundingClientRect();
+  const initialPieceCenterX = initialDraggedRect.left + initialDraggedRect.width / 2;
+  const initialPieceCenterY = initialDraggedRect.top + initialDraggedRect.height / 2;
+  updatePieceShadow(initialPieceCenterX, initialPieceCenterY);
 
   document.addEventListener('mousemove', dragMove);
   document.addEventListener('touchmove', dragMove, { passive: false });
@@ -396,6 +528,8 @@ function generateSinglePieceElement() {
 
   const pieceDiv = document.createElement('div');
   pieceDiv.classList.add('piece');
+  pieceDiv.classList.add('available-piece-glow'); // Animación de brillo continuo
+  pieceDiv.classList.add('new-piece-appear-animation'); // Animación de aparición
   pieceDiv.style.gridTemplateColumns = `repeat(${pieceMatrix[0].length}, ${pieceInListCellSize}px)`;
   pieceDiv.style.gridTemplateRows = `repeat(${pieceMatrix.length}, ${pieceInListCellSize}px)`;
   pieceDiv.dataset.pieceName = randomPieceTypeName; 
@@ -418,6 +552,12 @@ function generateSinglePieceElement() {
   });
   pieceDiv.addEventListener('mousedown', (e) => startDrag(e, randomPieceTypeName, pieceMatrix, pieceDiv));
   pieceDiv.addEventListener('touchstart', (e) => startDrag(e, randomPieceTypeName, pieceMatrix, pieceDiv), { passive: false });
+  
+  // Remover la clase de aparición después de que la animación termine
+  setTimeout(() => {
+    pieceDiv.classList.remove('new-piece-appear-animation');
+  }, 400); // 400ms coincide con la duración de la animación en CSS
+
   return pieceDiv;
 }
 
@@ -475,10 +615,43 @@ function placePiece(pieceMatrix, startRow, startCol, pieceColorForBoard) {
           cellToUpdate.style.backgroundColor = pieceColorForBoard;
           cellToUpdate.classList.add('piece-block');
           cellToUpdate.dataset.pieceColor = pieceColorForBoard;
+
+          // Aplicar animación de pulsación
+          cellToUpdate.classList.add('pulse-block-animation');
+          // Remover la clase después de la animación para permitir que se repita
+          setTimeout(() => {
+            cellToUpdate.classList.remove('pulse-block-animation');
+          }, 300); // 300ms coincide con la duración de la animación en CSS
         }
       }
     }
   }
+}
+
+function showFloatingScore(points, baseElement) {
+    const scoreTextElement = document.createElement('div');
+    scoreTextElement.textContent = `+${points}`;
+    scoreTextElement.classList.add('floating-score');
+    
+    const gameContainer = document.getElementById('game-container');
+    const boardRect_float = boardElement.getBoundingClientRect(); 
+    const gameContainerRect = gameContainer.getBoundingClientRect();
+
+    const boardCenterXInContainer = (boardRect_float.left - gameContainerRect.left) + (boardRect_float.width / 2);
+    const boardCenterYInContainer = (boardRect_float.top - gameContainerRect.top) + (boardRect_float.height / 2);
+
+    scoreTextElement.style.left = `${boardCenterXInContainer}px`;
+    scoreTextElement.style.top = `${boardCenterYInContainer - 30}px`; 
+    scoreTextElement.style.transform = 'translateX(-50%)'; 
+
+    gameContainer.appendChild(scoreTextElement);
+    scoreTextElement.classList.add('floating-score-animation');
+
+    setTimeout(() => {
+        if (scoreTextElement.parentNode) {
+            scoreTextElement.parentNode.removeChild(scoreTextElement);
+        }
+    }, FLOATING_SCORE_ANIMATION_DURATION); 
 }
 
 async function checkAndClearLines() {
@@ -486,44 +659,46 @@ async function checkAndClearLines() {
     let linesClearedThisTurn = 0;
     const rowsToClearIndices = [];
     const colsToClearIndices = [];
-    const cellsToAnimateAndClear = new Set(); // Renombrado para claridad
+    const cellsToAnimateAndClear = new Set(); 
+    let firstClearedCellElement = null; 
 
-    // 1. Identificar filas completas
     for (let r = 0; r < 10; r++) {
         if (board[r].every(cellState => cellState === 1)) {
             rowsToClearIndices.push(r);
-            for (let c = 0; c < 10; c++) {
-                const cellElement = boardElement.querySelector(`[data-row='${r}'][data-col='${c}']`);
-                if (cellElement) cellsToAnimateAndClear.add(cellElement);
+            for (let c_cell = 0; c_cell < 10; c_cell++) {
+                const cellElement = boardElement.querySelector(`[data-row='${r}'][data-col='${c_cell}']`);
+                if (cellElement) {
+                    cellsToAnimateAndClear.add(cellElement);
+                    if (!firstClearedCellElement) firstClearedCellElement = cellElement;
+                }
             }
         }
     }
 
-    // 2. Identificar columnas completas
     for (let c = 0; c < 10; c++) {
         let colIsFull = true;
-        for (let r = 0; r < 10; r++) {
-            if (board[r][c] === 0) {
+        for (let r_idx = 0; r_idx < 10; r_idx++) {
+            if (board[r_idx][c] === 0) {
                 colIsFull = false;
                 break;
             }
         }
         if (colIsFull) {
             colsToClearIndices.push(c);
-            for (let r = 0; r < 10; r++) {
-                const cellElement = boardElement.querySelector(`[data-row='${r}'][data-col='${c}']`);
-                if (cellElement) cellsToAnimateAndClear.add(cellElement);
+            for (let r_idx = 0; r_idx < 10; r_idx++) {
+                const cellElement = boardElement.querySelector(`[data-row='${r_idx}'][data-col='${c}']`);
+                if (cellElement) {
+                    cellsToAnimateAndClear.add(cellElement);
+                    if (!firstClearedCellElement) firstClearedCellElement = cellElement; 
+                }
             }
         }
     }
 
-    // 3. Calcular el número de líneas únicas limpiadas para el puntaje
     linesClearedThisTurn = rowsToClearIndices.length;
     colsToClearIndices.forEach(c_idx => {
         let isNewColLine = false;
         for (let r_idx = 0; r_idx < 10; r_idx++) {
-            // Contamos una columna como una nueva línea si no es parte de una fila ya contada
-            // y si la celda en esa columna (y cualquier fila) estaba ocupada.
             if (!rowsToClearIndices.includes(r_idx) && board[r_idx][c_idx] === 1) {
                 isNewColLine = true;
                 break;
@@ -537,57 +712,68 @@ async function checkAndClearLines() {
     console.log(`Celdas a animar y limpiar: ${cellsToAnimateAndClear.size}`);
 
     if (cellsToAnimateAndClear.size > 0) {
-        // 4. Aplicar animación de desvanecimiento
         cellsToAnimateAndClear.forEach(cellElement => {
-            // La animación de desvanecimiento se aplica directamente a la celda.
-            // Ya no buscamos un '.piece-block' dentro, asumimos que el color está en la celda.
-            cellElement.classList.add('line-fade-out');
+            cellElement.classList.add('line-shrink-fade-out'); 
         });
 
-        console.log("Clase 'line-fade-out' añadida. Esperando animación...");
-        // 5. Esperar que la animación termine
-        await new Promise(resolve => setTimeout(resolve, ANIMATION_DURATION));
-        console.log("...Animación terminada (según setTimeout).");
-
-        // 6. Limpieza final después de la animación
-        console.log("Iniciando limpieza post-animación.");
+        console.log("Clase 'line-shrink-fade-out' añadida. Realizando limpieza lógica inmediatamente.");
+        
+        // La limpieza lógica ahora ocurre inmediatamente.
+        // La animación CSS se ejecutará visualmente de forma independiente.
         cellsToAnimateAndClear.forEach(cellElement => {
-            const row = parseInt(cellElement.dataset.row);
-            const col = parseInt(cellElement.dataset.col);
-            console.log(`Limpiando celda: R${row}, C${col}`);
+            const row_cell = parseInt(cellElement.dataset.row);
+            const col_cell = parseInt(cellElement.dataset.col);
+            board[row_cell][col_cell] = 0; 
+            // No establecemos backgroundColor aquí todavía, dejamos que la animación lo maneje primero.
+            delete cellElement.dataset.pieceColor; 
+            cellElement.classList.remove('piece-block'); 
 
-            board[row][col] = 0; // Marcar como vacía en la lógica
-            cellElement.style.backgroundColor = ''; // Limpiar color de fondo
-            delete cellElement.dataset.pieceColor; // Limpiar el color guardado
-            cellElement.classList.remove('line-fade-out'); // Quitar clase de animación
-            cellElement.classList.remove('piece-block'); // Quitar clase que la marca como bloque de pieza
-            // Importante: Asegurar que la opacidad se restaura si la animación la cambió
-            cellElement.style.opacity = ''; // Restablecer opacidad a su valor por defecto (o el que dicte CSS)
+            // Programar la limpieza de estilos de animación después de que la animación termine
+            setTimeout(() => {
+                // Comprobar si la celda/elemento aún existe en el DOM por si acaso
+                if (cellElement && cellElement.parentNode) { 
+                    cellElement.classList.remove('line-shrink-fade-out');
+                    cellElement.style.opacity = ''; 
+                    cellElement.style.transform = ''; 
+                    cellElement.style.backgroundColor = ''; // Crucial: Resetear al color de celda vacía por defecto
+                }
+            }, ANIMATION_DURATION);
         });
 
         if (linesClearedThisTurn > 0) {
             console.log(`${linesClearedThisTurn} línea(s) eliminada(s). Actualizando puntaje...`);
-            updateScore(linesClearedThisTurn);
+            const pointsEarned = calculatePoints(linesClearedThisTurn);
+            updateScore(pointsEarned); 
+            if (firstClearedCellElement) { 
+                showFloatingScore(pointsEarned, firstClearedCellElement);
+            }
         }
+        // Ya no devolvemos una promesa basada en setTimeout, sino que resolvemos inmediatamente
+        // porque la lógica principal de limpieza ya se hizo.
+        // La función sigue siendo async por el 'await' en dragEnd, y esto es compatible.
+        return Promise.resolve();
+    } else {
+      return Promise.resolve();
     }
 }
 
-function updateScore(clearedLinesCount) {
-  if (clearedLinesCount > 0) {
-    let pointsEarned = clearedLinesCount * 10;
+function calculatePoints(clearedLinesCount) {
+    let points = clearedLinesCount * 10;
     if (clearedLinesCount > 1) {
-        pointsEarned += (clearedLinesCount -1) * clearedLinesCount * 5; // Bonus por combos
+        points += (clearedLinesCount - 1) * clearedLinesCount * 5; 
     }
-    score += pointsEarned;
+    return points;
+}
+
+function updateScore(pointsJustEarned) { 
+  if (pointsJustEarned > 0) {
+    score += pointsJustEarned;
     scoreElement.textContent = `Puntos: ${score}`;
-    console.log(`${clearedLinesCount} línea(s) eliminada(s). ${pointsEarned} puntos obtenidos. Nuevo puntaje: ${score}`);
-  } else {
-    console.log("updateScore llamado con 0 líneas.");
-  }
+    console.log(`${pointsJustEarned} puntos obtenidos. Nuevo puntaje: ${score}`);
+  } 
 }
 
 function handleGameOver() {
-  // Detener cualquier posible arrastre en curso
   if (draggedPieceElement && draggedPieceElement.parentNode === document.body) {
     document.body.removeChild(draggedPieceElement);
     if (activePieceElement) {
@@ -604,47 +790,47 @@ function handleGameOver() {
   document.removeEventListener('mouseup', dragEnd);
   document.removeEventListener('touchend', dragEnd);
 
-  // Mostrar el modal de Game Over
-  finalScoreElement.textContent = `Puntaje Final: ${score}`;
-  gameOverModal.style.display = 'flex'; // Cambiado para usar el display original del CSS para centrar
-  setTimeout(() => { // Pequeño delay para permitir que el display:flex se aplique antes de la transición de opacidad
-    gameOverModal.classList.add('visible');
-  }, 20); 
+  const modal = gameOverModal || document.getElementById('gameOverModal');
+  const scoreEl = finalScoreElement || document.getElementById('finalScore');
+
+  if (modal && scoreEl) {
+    scoreEl.textContent = `Puntaje Final: ${score}`;
+    modal.style.display = 'flex'; 
+    setTimeout(() => { 
+      modal.classList.add('visible');
+    }, 20); 
+  } else {
+    console.error("No se pudieron encontrar los elementos del modal de Game Over. Mostrando alert como fallback.");
+    alert(`¡Juego Terminado!\nPuntaje Final: ${score}`);
+  }
 }
 
 function checkGameOver() {
   const availablePieceElements = piecesElement.querySelectorAll('.piece');
-  if (availablePieceElements.length === 0 && boardIsEmpty()) { // Si no hay piezas y el tablero está vacío (inicio raro)
-      // Podría ser un estado inicial donde no se pudieron generar piezas, no es game over estándar.
-      return false; // No es game over por falta de movimientos
+  if (availablePieceElements.length === 0 && boardIsEmpty()) { 
+      return false; 
   }
-  if (availablePieceElements.length === 0 && !boardIsEmpty()){ // No hay piezas para colocar y el tablero no está vacío
+  if (availablePieceElements.length === 0 && !boardIsEmpty()){ 
       handleGameOver();
       return true;
   }
 
   for (let pieceElement of availablePieceElements) {
-    const pieceMatrix = pieceElement.pieceMatrix; // Acceder a la matriz guardada
-    if (!pieceMatrix) continue; // Seguridad, por si acaso
+    const pieceMatrix = pieceElement.pieceMatrix; 
+    if (!pieceMatrix) continue; 
 
-    // Intentar colocar esta pieza en cada celda del tablero
-    for (let r = 0; r < 10; r++) {
-      for (let c = 0; c < 10; c++) {
-        if (canPlacePiece(pieceMatrix, r, c)) {
-          // console.log("Movimiento posible encontrado. El juego continúa.");
-          return false; // Se encontró un movimiento posible, el juego no ha terminado
+    for (let r_board = 0; r_board < 10; r_board++) {
+      for (let c_board = 0; c_board < 10; c_board++) {
+        if (canPlacePiece(pieceMatrix, r_board, c_board)) {
+          return false; 
         }
       }
     }
   }
-
-  // Si se llega aquí, ninguna de las piezas disponibles se pudo colocar en ningún sitio.
-  // console.log("No hay movimientos posibles. ¡Juego Terminado!");
   handleGameOver();
-  return true; // Juego terminado
+  return true; 
 }
 
-// Función auxiliar para checkGameOver
 function boardIsEmpty() {
     for (let r = 0; r < 10; r++) {
         for (let c = 0; c < 10; c++) {
@@ -658,9 +844,11 @@ scoreElement.textContent = `Puntos: ${score}`;
 displayPieces();
 checkGameOver();
 
-// Event Listener para el botón de reiniciar (añadir al final del script o dentro de un DOMContentLoaded)
-if (restartGameButton) { // Verificar que el botón exista
-    restartGameButton.addEventListener('click', () => {
-        window.location.reload(); // Recarga la página para reiniciar
-    });
-}
+document.addEventListener('DOMContentLoaded', () => {
+    const effectiveRestartButton = restartGameButton || document.getElementById('restartGameButton');
+    if (effectiveRestartButton) { 
+        effectiveRestartButton.addEventListener('click', () => {
+            window.location.reload(); 
+        });
+    }
+});

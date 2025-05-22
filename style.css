@@ -186,4 +186,119 @@ body {
 #restartGameButton:active {
   transform: translateY(0px);
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+}
+
+/* Animación de Pulsación para bloques de pieza colocados */
+@keyframes pulseBlockAnimation {
+  0% {
+    transform: scale(1);
+    /* box-shadow: inset 0px 2px 2px rgba(255, 255, 255, 0.3), 
+                  inset 0px -2px 2px rgba(0, 0, 0, 0.2),    
+                  2px 2px 5px rgba(0,0,0,0.3); */ /* Sombra normal */
+  }
+  50% {
+    transform: scale(1.15); /* Escala un poco más grande */
+    /* Podríamos intensificar la sombra o añadir un brillo aquí si quisiéramos */
+    /* box-shadow: inset 0px 2px 3px rgba(255, 255, 255, 0.5), 
+                  inset 0px -2px 3px rgba(0, 0, 0, 0.3),    
+                  3px 3px 7px rgba(0,0,0,0.4); */
+  }
+  100% {
+    transform: scale(1);
+    /* box-shadow: inset 0px 2px 2px rgba(255, 255, 255, 0.3), 
+                  inset 0px -2px 2px rgba(0, 0, 0, 0.2),    
+                  2px 2px 5px rgba(0,0,0,0.3); */ /* Sombra normal */
+  }
+}
+
+.pulse-block-animation {
+  animation: pulseBlockAnimation 0.3s ease-out;
+}
+
+/* Animación de Brillo Sutil para Piezas Disponibles */
+@keyframes subtleGlow {
+  0% {
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(255, 255, 255, 0.5); /* Brillo más intenso */
+  }
+  100% {
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+  }
+}
+
+.available-piece-glow {
+  animation: subtleGlow 2.5s infinite ease-in-out;
+  /* La duración larga (2.5s) y 'infinite' la hacen sutil y continua */
+}
+
+/* Animación de Aparición para Nuevas Piezas en la Lista */
+@keyframes newPieceAppearAnimation {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) translateY(20px); /* Empieza más pequeña, transparente y un poco abajo */
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.1) translateY(-5px); /* Crece un poco más y sube un poco (efecto rebote ligero) */
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0px);
+  }
+}
+
+.new-piece-appear-animation {
+  animation: newPieceAppearAnimation 0.4s ease-out forwards;
+  /* 'forwards' para mantener el estado final de la animación (opacity:1, scale:1) */
+}
+
+/* Animación para la puntuación flotante */
+@keyframes floatAndFade {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(0.8); /* Modificado para que la posición la controle JS */
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-70px) scale(1.5); /* Flota más arriba y se agranda un poco más al final */
+  }
+}
+
+.floating-score {
+  position: absolute; /* Necesario para posicionarlo sobre el tablero */
+  font-size: 1.8em; /* Tamaño del texto de puntos flotantes */
+  font-weight: bold;
+  color: #FFEB3B; /* Amarillo brillante */
+  text-shadow: 2px 2px 3px rgba(0, 0, 0, 0.7); /* Sombra de texto pronunciada para legibilidad */
+  pointer-events: none; /* Para que no interfiera con otros elementos */
+  z-index: 1500; /* Encima del tablero pero debajo del modal de Game Over */
+  opacity: 0; /* Inicialmente invisible hasta que se aplica la animación */
+}
+
+.floating-score-animation {
+  animation: floatAndFade 1.2s ease-out forwards;
+  /* 'forwards' es importante para que desaparezca (opacity: 0) */
+}
+
+/* Nueva animación para limpieza de líneas: Encoger y Desvanecer */
+@keyframes shrinkAndFadeOut {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.01); /* Encoge casi por completo */
+    opacity: 0;
+  }
+}
+
+.line-shrink-fade-out {
+  animation: shrinkAndFadeOut 0.5s forwards; /* Duración coincide con ANIMATION_DURATION */
+  /* Asegúrate de que los bloques no interfieran con clics durante la animación si es necesario */
+  /* pointer-events: none;  Podría ser útil si la animación es muy lenta */
 } 
