@@ -15,6 +15,7 @@ const gameOverModal = document.getElementById('gameOverModal');
 const finalScoreElement = document.getElementById('finalScore'); // Ya existía, asegurar que esté aquí
 const gameOverTitleElement = document.getElementById('gameOverTitle'); // Ya existía, asegurar que esté aquí
 const comboStartEffectElement = document.getElementById('combo-start-effect'); // Nuevo elemento para efecto Combo Start
+const comboStatusEffectElement = document.getElementById('combo-status-effect'); // Nuevo elemento
 
 // Botones
 const modeLevelsButton = document.getElementById('modeLevelsButton');
@@ -52,7 +53,7 @@ const COMBO_BASE_POINTS = { // Puntos base por línea, antes de combo (REINTRODU
     3: 500, // 3 líneas
     4: 800  // 4 líneas (Tetris)
 };
-const COMBO_ACTIVATION_LINES_REQUIRED = 5; // Líneas para activar el combo
+const COMBO_ACTIVATION_LINES_REQUIRED = 4; // Líneas para activar el combo
 const COMBO_ACTIVATION_WINDOW_MS = 10000;  // Ventana de tiempo para activar (10s)
 const COMBO_PROGRESSION_LINES_REQUIRED = 1; // Líneas para mantener/incrementar el combo
 const COMBO_PROGRESSION_WINDOW_MS = 5000;   // Ventana de tiempo para progresar (5s)
@@ -207,6 +208,147 @@ const CELL_SIZE = 30; // Tamaño de la celda del tablero en píxeles
 const GAP_SIZE = 2;   // Tamaño del gap entre celdas del tablero en píxeles
 
 const pieceKeys = Object.keys(PIECES); // Nombres de las piezas: ['I', 'L', 'J', ...]
+
+// --- NUEVAS VARIABLES GLOBALES PARA PARTÍCULAS ---
+const particleCanvas = document.getElementById('particle-canvas');
+let particleCtx = particleCanvas ? particleCanvas.getContext('2d') : null;
+let particles = [];
+let animationFrameIdParticles = null;
+const NUM_PARTICLES_PER_CELL = 15; // Número de partículas por celda eliminada
+
+// --- CLASE PARTICLE ---
+class Particle {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.size = Math.random() * 4 + 2; // Tamaño aleatorio entre 2 y 6
+        this.speedX = (Math.random() - 0.5) * 5; // Movimiento horizontal aleatorio
+        this.speedY = (Math.random() * -3 - 2);   // Movimiento vertical inicial hacia arriba
+        this.life = Math.random() * 60 + 40;    // Vida de la partícula (40-100 frames)
+        this.initialLife = this.life;
+        this.opacity = 1;
+        this.gravity = 0.15; // Gravedad más notable
+        this.friction = 0.98; // Fricción para desacelerar
+    }
+
+    update() {
+        this.life--;
+        this.speedY += this.gravity;
+        this.speedX *= this.friction;
+        this.speedY *= this.friction;
+        this.x += this.speedX;
+        this.y += this.speedY;
+        // Opacidad basada en la vida restante (desvanecimiento más suave)
+        if (this.life < this.initialLife * 0.75) {
+             this.opacity = Math.max(0, this.life / (this.initialLife * 0.75));
+        }
+    }
+
+    draw() {
+        if (!particleCtx) return;
+        particleCtx.save();
+        particleCtx.globalAlpha = Math.max(0, this.opacity);
+        particleCtx.fillStyle = this.color;
+        particleCtx.beginPath();
+        particleCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        particleCtx.fill();
+        particleCtx.restore();
+    }
+}
+
+// --- FUNCIONES DEL SISTEMA DE PARTÍCULAS ---
+function setupParticleCanvas() {
+    if (!particleCanvas || !boardElement || !gameContainerElement) {
+        console.error("PARTICLE DEBUG: Faltan elementos para configurar el canvas de partículas (particleCanvas, boardElement, o gameContainerElement).");
+        return;
+    }
+    console.log("PARTICLE DEBUG: Llamando a setupParticleCanvas.");
+
+    const boardRect = boardElement.getBoundingClientRect();
+    const gameContainerRect = gameContainerElement.getBoundingClientRect();
+
+    particleCanvas.style.position = 'absolute';
+    particleCanvas.style.top = `${boardElement.offsetTop}px`;
+    particleCanvas.style.left = `${boardElement.offsetLeft}px`;
+    
+    particleCanvas.width = boardElement.offsetWidth;
+    particleCanvas.height = boardElement.offsetHeight;
+
+    if (particleCanvas.width === 0 || particleCanvas.height === 0) {
+        console.warn("PARTICLE DEBUG: ¡El canvas de partículas tiene dimensiones CERO! boardElement.offsetWidth:", boardElement.offsetWidth, "boardElement.offsetHeight:", boardElement.offsetHeight);
+    } else {
+        console.log("PARTICLE DEBUG: Particle canvas configurado. Dimensiones:", particleCanvas.width, "x", particleCanvas.height, "Posición top:", particleCanvas.style.top, "left:", particleCanvas.style.left);
+    }
+    
+    if (!particleCtx) {
+        console.error("PARTICLE DEBUG: particleCtx no está definido después de intentar obtener el contexto.");
+    } else {
+        console.log("PARTICLE DEBUG: particleCtx obtenido correctamente.");
+    }
+}
+
+
+function createParticleExplosion(cellElement) {
+    if (!particleCanvas || !boardElement) {
+        console.error("PARTICLE DEBUG: Faltan particleCanvas o boardElement en createParticleExplosion");
+        return;
+    }
+    console.log("PARTICLE DEBUG: Llamando a createParticleExplosion para la celda:", cellElement);
+
+    const color = cellElement.dataset.pieceColor || cellElement.style.backgroundColor || '#FFFFFF';
+    console.log("PARTICLE DEBUG: Color de partícula determinado:", color);
+    if (!color || color === '' || color === 'rgba(0, 0, 0, 0)') {
+        console.warn("PARTICLE DEBUG: El color de la partícula es inválido o transparente. Usando fallback a blanco si es necesario.");
+    }
+    const cellRect = cellElement.getBoundingClientRect();
+    const boardRect = boardElement.getBoundingClientRect(); // Usar boardRect para referencia de posición
+
+    // Coordenadas del centro de la celda relativas al boardElement (y por ende al canvas)
+    const x = (cellRect.left - boardRect.left) + (cellElement.offsetWidth / 2);
+    const y = (cellRect.top - boardRect.top) + (cellElement.offsetHeight / 2);
+
+    for (let i = 0; i < NUM_PARTICLES_PER_CELL; i++) {
+        particles.push(new Particle(x, y, color));
+    }
+    console.log(`PARTICLE DEBUG: ${NUM_PARTICLES_PER_CELL} partículas creadas. Total partículas: ${particles.length}`);
+
+    if (!animationFrameIdParticles && particles.length > 0) {
+        console.log("PARTICLE DEBUG: Iniciando animateParticles().");
+        animateParticles();
+    } else if (animationFrameIdParticles && particles.length > 0) {
+        console.log("PARTICLE DEBUG: animateParticles() ya estaba corriendo.");
+    } else if (particles.length === 0) {
+        console.warn("PARTICLE DEBUG: No hay partículas para animar después de createParticleExplosion.");
+    }
+}
+
+function animateParticles() {
+    if (!particleCtx || !particleCanvas) {
+        console.error("PARTICLE DEBUG: Falta particleCtx o particleCanvas en animateParticles");
+        return;
+    }
+    particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+    
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.update();
+        p.draw();
+        if (p.life <= 0 || p.opacity <= 0) {
+            particles.splice(i, 1);
+        }
+    }
+
+    if (particles.length > 0) {
+        animationFrameIdParticles = requestAnimationFrame(animateParticles);
+    } else {
+        cancelAnimationFrame(animationFrameIdParticles);
+        animationFrameIdParticles = null;
+        // Limpiar el canvas una última vez por si acaso
+        if(particleCtx && particleCanvas) particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+        console.log("Animación de partículas detenida y canvas limpiado.");
+    }
+}
 
 function hexToRgba(hex, alpha = 1) {
     if (!hex) return ''; // Devuelve string vacío si no hay hex, para resetear el estilo inline
@@ -437,8 +579,7 @@ function checkPotentialLines(tempBoard, piecePos, pieceMatrix) {
         let colIsFull = true;
         for (let r = 0; r < 10; r++) {
             if (tempBoard[r][c] === 0) {
-                colIsFull = false;
-                break;
+                colIsFull = false; break;
             }
         }
         if (colIsFull) {
@@ -669,7 +810,6 @@ function initializeGameMode(mode) {
     score = 0;
     updateScore(0); 
     
-    // Resetear estado del combo para la NUEVA lógica
     isComboActive = false;
     linesClearedForComboActivation = 0;
     timeOfFirstLineClearForActivation = 0;
@@ -681,17 +821,50 @@ function initializeGameMode(mode) {
     comboActivationHelperTimeoutId = null;
 
     hideComboMessage();    
-    updateComboVisuals(); // Asegurar que no haya efectos de combo al inicio
-    // clearTimeout(window.comboTimeoutId); // Ya no se usa
+    updateComboVisuals(); 
 
     if(piecesElement) piecesElement.innerHTML = '';
     displayPieces(); 
 
     createBoardCells(); 
+    
+    // Diferir la configuración del canvas para asegurar que el DOM esté listo
+    requestAnimationFrame(() => {
+        if (particleCanvas && boardElement && gameContainerElement) { 
+            console.log("PARTICLE DEBUG: Llamando a setupParticleCanvas desde requestAnimationFrame en initializeGameMode.");
+            setupParticleCanvas();
+        } else {
+            console.warn("PARTICLE DEBUG: No se pudo configurar el canvas (desde rAF) porque faltan elementos.");
+        }
+    });
+
+    // Limpiar partículas existentes de un juego anterior
+    particles = [];
+    if (animationFrameIdParticles) {
+        cancelAnimationFrame(animationFrameIdParticles);
+        animationFrameIdParticles = null;
+        if(particleCtx && particleCanvas) particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+    }
+
     updateScreenVisibility();
 
     console.log("Tablero y juego reiniciados para el modo:", mode);
     console.log("Board state after init: ", JSON.parse(JSON.stringify(board)));
+
+    if (mode === 'combo') {
+        if (backgroundCanvas && setupBackgroundCanvas()) {
+            backgroundCanvas.style.display = 'block';
+            document.body.style.background = 'none'; // Ocultar fondo del body
+            manageStarAnimation(true);
+        } else {
+            console.error("BG DEBUG: No se pudo configurar o mostrar el canvas de fondo para el modo combo.");
+            document.body.style.background = 'linear-gradient(to bottom right, #6D5B97, #A77DBA)'; // Fallback
+        }
+    } else {
+        if (backgroundCanvas) backgroundCanvas.style.display = 'none';
+        manageStarAnimation(false);
+        document.body.style.background = 'linear-gradient(to bottom right, #6D5B97, #A77DBA)'; // Restaurar fondo del body
+    }
 }
 
 function showModeSelector() {
@@ -787,8 +960,8 @@ function showFloatingScore(points, baseElement) {
 async function checkAndClearLines() {
     console.log("--- checkAndClearLines INICIO ---");
     let linesClearedThisTurnCount = 0; 
-    const cellsToAnimateAndClear = new Set(); 
-    let firstClearedCellElement = null; 
+    const cellsToClearLogically = new Set(); // Para la lógica del tablero
+    const cellElementsForParticles = []; // Para las partículas, necesitamos el elemento y su color ANTES de limpiarlo
 
     const numRows = board.length;
     const numCols = board[0].length;
@@ -806,8 +979,10 @@ async function checkAndClearLines() {
             for (let c_idx = 0; c_idx < numCols; c_idx++) {
                 const cellElement = boardElement.children[r * numCols + c_idx];
                 if (cellElement) {
-                    cellsToAnimateAndClear.add(cellElement);
-                    if (!firstClearedCellElement) firstClearedCellElement = cellElement;
+                    cellsToClearLogically.add({row: r, col: c_idx, element: cellElement});
+                    if (!cellElementsForParticles.find(item => item.element === cellElement)) {
+                         cellElementsForParticles.push({element: cellElement, color: cellElement.dataset.pieceColor || cellElement.style.backgroundColor});
+                    }
                 }
             }
         }
@@ -825,70 +1000,124 @@ async function checkAndClearLines() {
             let newColLine = false;
             for (let r_idx = 0; r_idx < numRows; r_idx++) {
                 const cellElement = boardElement.children[r_idx * numCols + c];
-                if (cellElement && !cellsToAnimateAndClear.has(cellElement)) newColLine = true;
+                // Verificar si esta celda de columna ya fue contada en una fila completa
+                const alreadyInLogicSet = Array.from(cellsToClearLogically).some(item => item.element === cellElement);
+                if (!alreadyInLogicSet) newColLine = true;
+
                 if (cellElement) {
-                     cellsToAnimateAndClear.add(cellElement);
-                     if (!firstClearedCellElement) firstClearedCellElement = cellElement;
+                     cellsToClearLogically.add({row: r_idx, col: c, element: cellElement});
+                     if (!cellElementsForParticles.find(item => item.element === cellElement)) {
+                         cellElementsForParticles.push({element: cellElement, color: cellElement.dataset.pieceColor || cellElement.style.backgroundColor});
+                     }
                 }
             }
-            if (newColLine) linesClearedThisTurnCount++;
+            // Solo incrementar linesClearedThisTurnCount si esta columna añade celdas que no estaban en filas completas
+            // Esto es complejo de determinar aquí, la lógica anterior de combo se basa en `linesClearedThisTurnCount`
+            // que contaba "líneas" (una fila es una línea, una columna es una línea).
+            // Reajustaremos esto. Contaremos el número único de "líneas conceptuales" (filas o columnas)
         }
     }
     
-    console.log(`Líneas (filas/columnas) para procesar en combo: ${linesClearedThisTurnCount}`);
+    // Recalcular linesClearedThisTurnCount basado en las filas y columnas únicas que se llenaron
+    const uniqueRowsCleared = new Set();
+    const uniqueColsCleared = new Set();
+    cellsToClearLogically.forEach(cellData => {
+        let rowIsFull = true;
+        for(let c_idx = 0; c_idx < numCols; c_idx++) {
+            if(board[cellData.row][c_idx] === 0 && !Array.from(cellsToClearLogically).some(item => item.row === cellData.row && item.col === c_idx)) {
+                rowIsFull = false; break;
+            }
+        }
+        if(rowIsFull) uniqueRowsCleared.add(cellData.row);
 
-    if (linesClearedThisTurnCount > 0) {
+        let colIsFull = true;
+        for(let r_idx = 0; r_idx < numRows; r_idx++) {
+             if(board[r_idx][cellData.col] === 0 && !Array.from(cellsToClearLogically).some(item => item.row === r_idx && item.col === cellData.col)) {
+                colIsFull = false; break;
+            }
+        }
+        if(colIsFull) uniqueColsCleared.add(cellData.col);
+    });
+    linesClearedThisTurnCount = uniqueRowsCleared.size + uniqueColsCleared.size;
+    // Corrección: si una celda es parte de una fila Y una columna completada, se cuenta dos veces arriba.
+    // Necesitamos un conteo de líneas visuales.
+    // La lógica de `linesClearedThisTurnCount` original era más simple y quizás suficiente para el combo.
+    // Por ahora, usemos el conteo de celdas para la lógica de puntos/combo como un proxy
+    // pero el usuario se refería al número de "líneas".
+    // Vamos a mantener la lógica de linesClearedThisTurnCount como estaba antes para el combo,
+    // y usar cellElementsForParticles para la animación.
+    // Re-calculando `linesClearedThisTurnCount` de la manera anterior:
+    linesClearedThisTurnCount = 0;
+    const completedLineIndices = { rows: new Set(), cols: new Set() };
+    for (let r = 0; r < numRows; r++) {
+        if (board[r].every((cell, c_idx) => cell === 1 || Array.from(cellsToClearLogically).some(item => item.row ===r && item.col === c_idx))) {
+            if (!completedLineIndices.rows.has(r)) {
+                linesClearedThisTurnCount++;
+                completedLineIndices.rows.add(r);
+            }
+        }
+    }
+    for (let c = 0; c < numCols; c++) {
+        let colFull = true;
+        for(let r = 0; r < numRows; r++) {
+            if(!(board[r][c] === 1 || Array.from(cellsToClearLogically).some(item => item.row ===r && item.col === c))) {
+                colFull = false; break;
+            }
+        }
+        if (colFull) {
+            if (!completedLineIndices.cols.has(c)) {
+                linesClearedThisTurnCount++;
+                completedLineIndices.cols.add(c);
+            }
+        }
+    }
+    // Si una celda en la intersección de una fila y columna completada se cuenta en ambas,
+    // linesClearedThisTurnCount podría ser > lo esperado. El sistema de puntos original
+    // no maneja intersecciones de forma aditiva así, sino por número de líneas.
+    // La forma más simple es que `linesClearedThisTurnCount` sea el número de filas completas + número de columnas completas.
+    // Esto es lo que hacía antes de la re-evaluación.
+
+    console.log(`Líneas (filas/columnas) para procesar en combo: ${linesClearedThisTurnCount}`);
+    console.log(`PARTICLE DEBUG: Celdas identificadas para partículas: ${cellElementsForParticles.length}`);
+    if (cellElementsForParticles.length === 0 && linesClearedThisTurnCount > 0) {
+        console.warn("PARTICLE DEBUG: linesClearedThisTurnCount > 0 pero cellElementsForParticles está vacío.");
+    }
+
+    if (cellElementsForParticles.length > 0) { 
+        // Lógica de Combo (se mantiene mayormente igual, usa linesClearedThisTurnCount)
         if (currentGameMode === 'combo') {
             const currentTime = Date.now();
-            clearTimeout(comboProgressionTimeoutId); // Limpiar siempre el timer de progresión si se limpian líneas
+            clearTimeout(comboProgressionTimeoutId); 
 
             if (!isComboActive) {
-                // --- Lógica de Activación del Combo ---
-                if (linesClearedForComboActivation === 0) { // Primera limpieza en esta "racha" de activación
+                if (linesClearedForComboActivation === 0) { 
                     timeOfFirstLineClearForActivation = currentTime;
-                    // Iniciar un helper para resetear el contador de activación si pasan los 10s sin lograrlo
                     clearTimeout(comboActivationHelperTimeoutId);
                     comboActivationHelperTimeoutId = setTimeout(() => {
-                        console.log("Ventana de activación de combo expiró. Reseteando contador.");
                         linesClearedForComboActivation = 0;
                         timeOfFirstLineClearForActivation = 0;
-                    }, COMBO_ACTIVATION_WINDOW_MS + 500); // +500ms de margen
+                    }, COMBO_ACTIVATION_WINDOW_MS + 500);
                 }
                 
                 if (currentTime - timeOfFirstLineClearForActivation < COMBO_ACTIVATION_WINDOW_MS) {
                     linesClearedForComboActivation += linesClearedThisTurnCount;
-                    console.log(`Activación Combo: ${linesClearedForComboActivation}/${COMBO_ACTIVATION_LINES_REQUIRED} líneas en ${COMBO_ACTIVATION_WINDOW_MS / 1000}s`);
-
                     if (linesClearedForComboActivation >= COMBO_ACTIVATION_LINES_REQUIRED) {
                         isComboActive = true;
-                        currentComboLevel = 1; // Inicia en x2 (índice 1)
-                        linesClearedInCurrentComboWindow = 0; // Resetear para la primera ventana de progresión
-                        clearTimeout(comboActivationHelperTimeoutId); // Ya no es necesario
-                        linesClearedForComboActivation = 0; // Resetear para futura reactivación si se pierde
+                        currentComboLevel = 1; 
+                        linesClearedInCurrentComboWindow = 0; 
+                        clearTimeout(comboActivationHelperTimeoutId); 
+                        linesClearedForComboActivation = 0; 
                         timeOfFirstLineClearForActivation = 0;
-
-
                         console.log(`¡COMBO ACTIVADO! Nivel: ${currentComboLevel} (x${COMBO_MULTIPLIERS_NEW[currentComboLevel]})`);
                         showComboMessage(COMBO_MULTIPLIERS_NEW[currentComboLevel], "¡Combo Activado!");
                         updateComboVisuals();
                         
-                        // Mostrar efecto de Combo Start
-                        if (comboStartEffectElement) {
-                            comboStartEffectElement.classList.remove('hidden');
-                            comboStartEffectElement.classList.add('animate');
-                            setTimeout(() => {
-                                comboStartEffectElement.classList.add('hidden');
-                                comboStartEffectElement.classList.remove('animate');
-                            }, 1200); // Duración de la animación comboStartZoom
-                        }
+                        displayCentralEffect("¡COMBO!");
                         
-                        // Iniciar temporizador para la primera ventana de progresión
                         comboProgressionTimeoutId = setTimeout(handleComboProgressionTimeout, COMBO_PROGRESSION_WINDOW_MS);
                     }
                 } else {
-                    // Pasó demasiado tiempo desde la primera limpieza para activación, resetear.
-                    console.log("Tiempo de activación de combo excedido. Reiniciando conteo de activación.");
-                    linesClearedForComboActivation = linesClearedThisTurnCount; // Empezar nuevo conteo
+                    linesClearedForComboActivation = linesClearedThisTurnCount; 
                     timeOfFirstLineClearForActivation = currentTime;
                     clearTimeout(comboActivationHelperTimeoutId);
                      comboActivationHelperTimeoutId = setTimeout(() => {
@@ -896,64 +1125,64 @@ async function checkAndClearLines() {
                         timeOfFirstLineClearForActivation = 0;
                     }, COMBO_ACTIVATION_WINDOW_MS + 500);
                 }
-
-            } else { // --- Lógica de Progresión del Combo (isComboActive === true) ---
+            } else { 
                 linesClearedInCurrentComboWindow += linesClearedThisTurnCount;
-                console.log(`Progresión Combo: ${linesClearedInCurrentComboWindow}/${COMBO_PROGRESSION_LINES_REQUIRED} líneas en ${COMBO_PROGRESSION_WINDOW_MS / 1000}s`);
-
                 if (linesClearedInCurrentComboWindow >= COMBO_PROGRESSION_LINES_REQUIRED) {
                     if (currentComboLevel < MAX_COMBO_LEVEL) {
                         currentComboLevel++;
+                        // Mostrar efecto de incremento de multiplicador
+                        displayCentralEffect(`x${COMBO_MULTIPLIERS_NEW[currentComboLevel]}`); 
                     }
-                    linesClearedInCurrentComboWindow = 0; // Resetear para la siguiente ventana
-                    
+                    linesClearedInCurrentComboWindow = 0; 
                     console.log(`¡COMBO CONTINÚA! Nivel: ${currentComboLevel} (x${COMBO_MULTIPLIERS_NEW[currentComboLevel]})`);
                     showComboMessage(COMBO_MULTIPLIERS_NEW[currentComboLevel]);
                     updateComboVisuals();
                 }
-                // Siempre reiniciar el temporizador de progresión si se limpiaron líneas y el combo está activo
                 comboProgressionTimeoutId = setTimeout(handleComboProgressionTimeout, COMBO_PROGRESSION_WINDOW_MS);
             }
         }
 
-        // Cálculo de puntos y efectos visuales de limpieza (esto es general)
-        const pointsEarned = calculatePoints(linesClearedThisTurnCount); 
+        // Puntos y UI
+        const pointsEarned = calculatePoints(linesClearedThisTurnCount); // Usar linesClearedThisTurnCount
         updateScore(pointsEarned);
-        if (firstClearedCellElement) {
-            showFloatingScore(pointsEarned, firstClearedCellElement);
+        if (cellElementsForParticles.length > 0 && cellElementsForParticles[0].element) {
+             showFloatingScore(pointsEarned, cellElementsForParticles[0].element); // Mostrar desde la primera celda afectada
         }
 
-        cellsToAnimateAndClear.forEach(cellElement => {
-            cellElement.classList.add('line-shrink-fade-out');
+        // ---- NUEVA LÓGICA DE LIMPIEZA CON PARTÍCULAS ----
+        console.log("PARTICLE DEBUG: Entrando en la sección de creación de partículas y limpieza de DOM.");
+        cellElementsForParticles.forEach(item => {
+            if(!item.element) console.error("PARTICLE DEBUG: item.element es undefined en cellElementsForParticles.forEach");
+            else createParticleExplosion(item.element);
         });
-        
-        cellsToAnimateAndClear.forEach(cellElement => {
-            const row_cell = parseInt(cellElement.dataset.row);
-            const col_cell = parseInt(cellElement.dataset.col);
-            board[row_cell][col_cell] = 0; 
-            delete cellElement.dataset.pieceColor; 
-            cellElement.classList.remove('piece-block'); 
-            setTimeout(() => {
-                if (cellElement && cellElement.parentNode) { 
-                    cellElement.classList.remove('line-shrink-fade-out');
+
+        // Limpiar la lógica del tablero y el DOM inmediatamente
+        cellsToClearLogically.forEach(cellData => {
+            const { row, col, element: cellElement } = cellData;
+            if (board[row][col] === 1) { // Solo limpiar si estaba ocupada
+                board[row][col] = 0; 
+                
+                // Resetear estilo visual de la celda del DOM
+                if (cellElement) {
+                    delete cellElement.dataset.pieceColor; 
+                    cellElement.classList.remove('piece-block'); 
+                    // Quitar cualquier clase de animación anterior por si acaso
+                    cellElement.classList.remove('line-shrink-fade-out'); 
                     cellElement.style.opacity = ''; 
                     cellElement.style.transform = ''; 
-                    cellElement.style.backgroundColor = ''; 
+                    cellElement.style.backgroundColor = ''; // Vuelve al color de .cell
+                    cellElement.style.visibility = 'visible'; // Asegurar que sea visible como celda vacía
                 }
-            }, ANIMATION_DURATION);
+            }
         });
+        // ---- FIN DE NUEVA LÓGICA DE LIMPIEZA ----
 
         if (checkGameOver()) {
             handleGameOver();
         } 
         return Promise.resolve(linesClearedThisTurnCount); 
-    } else { 
-        // NO se limpiaron líneas esta vez.
-        // Si el combo estaba activo, el temporizador de progresión (comboProgressionTimeoutId) sigue corriendo.
-        // Si expira, handleComboProgressionTimeout se encargará de romper el combo.
-        // No rompemos el combo aquí solo por no limpiar líneas en un turno,
-        // ya que el jugador tiene 5 segundos para lograr las 2 líneas.
-        console.log("No se limpiaron líneas. El temporizador de progresión de combo (si activo) continúa.");
+    } else {
+        console.log("No se limpiaron líneas.");
         return Promise.resolve(0); 
     }
 }
@@ -964,11 +1193,24 @@ function handleComboProgressionTimeout() {
         if (linesClearedInCurrentComboWindow < COMBO_PROGRESSION_LINES_REQUIRED) {
             console.log("No se cumplió el objetivo de líneas para mantener el combo. ¡COMBO ROTO!");
             isComboActive = false;
-            currentComboLevel = 0; // Resetear al multiplicador base x1
-            linesClearedForComboActivation = 0; // Permitir reactivación
+            currentComboLevel = 0; 
+            linesClearedForComboActivation = 0; 
             timeOfFirstLineClearForActivation = 0;
             hideComboMessage();
             updateComboVisuals();
+
+            // Mostrar efecto de Combo Roto
+            if (comboStatusEffectElement) {
+                comboStatusEffectElement.textContent = "¡COMBO Roto! 😟";
+                comboStatusEffectElement.className = 'combo-status-effect combo-lost animate-lost'; // Quita hidden, añade clases de estilo y animación
+                // No es necesario quitar hidden explícitamente si opacity:0 y animate-lost lo hace visible
+                setTimeout(() => {
+                    if (comboStatusEffectElement) {
+                       comboStatusEffectElement.className = 'combo-status-effect hidden'; // Ocultar y resetear clases
+                    }
+                }, 1800); // Duración de la animación comboLostAnimation
+            }
+
         } else {
             // Se cumplió justo a tiempo o un poco antes, y checkAndClearLines ya reinició el timer.
             // Esto es un fallback, pero la lógica principal está en checkAndClearLines.
@@ -1068,6 +1310,12 @@ function handleGameOver() {
     setTimeout(() => { // Aplicar transición de visibilidad
       gameOverModal.classList.add('visible');
     }, 20); 
+
+    // Asegurarse de que el fondo de estrellas se detenga y se oculte, y el fondo del body se restaure
+    if (backgroundCanvas) backgroundCanvas.style.display = 'none';
+    manageStarAnimation(false);
+    document.body.style.background = 'linear-gradient(to bottom right, #6D5B97, #A77DBA)';
+    starSpeedMultiplier = 1; // Resetear velocidad por si acaso
 }
 
 function checkGameOver() {
@@ -1137,14 +1385,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Botón de reinicio en el modal de Game Over
     if (restartGameButton) { 
         restartGameButton.addEventListener('click', () => {
-            navigateTo('mode-select'); // Volver a la pantalla de selección de modo
+            navigateTo('mode-select'); 
         });
     }
 
-    // Iniciar la aplicación mostrando la pantalla de selección de modo
+    // Inicialización del canvas de fondo
+    if (bgCtx) { 
+        setupBackgroundCanvas();
+        window.addEventListener('resize', setupBackgroundCanvas); 
+    } else {
+        console.error("BG DEBUG: No se pudo configurar el canvas de fondo en DOMContentLoaded porque bgCtx es nulo.");
+    }
+
     navigateTo('mode-select');
 });
 
@@ -1191,10 +1445,29 @@ function updateScreenVisibility() {
 function navigateTo(screen, modeData = null) {
     console.log(`Navigating to screen: ${screen}, Mode data: ${modeData}`);
     currentScreen = screen;
+
+    // Control del fondo de estrellas al navegar
+    if (screen !== 'gameplay' || currentGameMode !== 'combo') {
+        if (backgroundCanvas) backgroundCanvas.style.display = 'none';
+        manageStarAnimation(false);
+        document.body.style.background = 'linear-gradient(to bottom right, #6D5B97, #A77DBA)';
+        starSpeedMultiplier = 1; // Resetear velocidad
+    } else if (screen === 'gameplay' && currentGameMode === 'combo') {
+        // initializeGameMode ya se encarga de mostrarlo para el modo combo
+        // pero si se navega directamente a gameplay (poco probable sin pasar por init), esto sería un fallback
+        if (backgroundCanvas && backgroundCanvas.style.display === 'none') {
+            if (setupBackgroundCanvas()) {
+                backgroundCanvas.style.display = 'block';
+                document.body.style.background = 'none';
+                manageStarAnimation(true);
+            }
+        }
+    }
+
     if (screen === 'mode-description' && modeData) {
         selectedModeForDescription = modeData;
     } else if (screen === 'mode-select') {
-        selectedModeForDescription = null; // Limpiar al volver a la selección
+        selectedModeForDescription = null; 
     }
     updateScreenVisibility();
 }
@@ -1251,4 +1524,162 @@ function updateComboVisuals() {
     if (isComboActive && currentComboLevel > 0 && currentComboLevel <= MAX_COMBO_LEVEL) {
         gameContainerElement.classList.add(`combo-level-${currentComboLevel}`);
     }
+}
+
+// --- FUNCIÓN PARA MOSTRAR EFECTOS CENTRALES DE TEXTO ---
+function displayCentralEffect(text) {
+    if (!comboStartEffectElement) return;
+
+    comboStartEffectElement.textContent = text;
+    comboStartEffectElement.classList.remove('hidden');
+    comboStartEffectElement.classList.add('animate'); // Reutilizamos la animación existente
+
+    setTimeout(() => {
+        if (comboStartEffectElement) { // Comprobar de nuevo por si acaso
+            comboStartEffectElement.classList.add('hidden');
+            comboStartEffectElement.classList.remove('animate');
+        }
+    }, 1200); // Duración de la animación comboStartZoom (ajustar si es diferente)
+}
+
+// --- VARIABLES GLOBALES PARA EL FONDO DE ESTRELLAS ---
+const backgroundCanvas = document.getElementById('background-canvas');
+let bgCtx = backgroundCanvas ? backgroundCanvas.getContext('2d') : null;
+let stars = [];
+const NUM_STARS = 150; 
+let animationFrameIdBackground = null;
+let starSpeedMultiplier = 1; // Nuevo: Multiplicador de velocidad de estrellas
+const COMBO_STAR_SPEED_MULTIPLIER = 15; // Aumentado significativamente
+
+// --- CLASE STAR (PARA EL FONDO) ---
+class Star {
+    constructor(canvasWidth, canvasHeight) {
+        this.x = Math.random() * canvasWidth;
+        this.y = Math.random() * canvasHeight;
+        this.size = Math.random() * 1.5 + 0.5; 
+        this.baseSpeedX = (Math.random() - 0.5) * 0.2; 
+        this.baseSpeedY = (Math.random() - 0.5) * 0.2;
+        this.opacity = Math.random() * 0.5 + 0.3; 
+        this.blinkSpeed = (Math.random() * 0.02) + 0.005;
+        this.blinkDirection = 1;
+        this.maxOpacity = Math.min(1, this.opacity + 0.4); 
+        this.minOpacity = Math.max(0.1, this.opacity - 0.3); 
+        this.canvasWidth = canvasWidth;
+        this.canvasHeight = canvasHeight;
+    }
+
+    update() {
+        const currentSpeedX = this.baseSpeedX * starSpeedMultiplier;
+        const currentSpeedY = this.baseSpeedY * starSpeedMultiplier;
+        this.x += currentSpeedX;
+        this.y += currentSpeedY;
+
+        this.opacity += this.blinkSpeed * this.blinkDirection;
+        if (this.opacity > this.maxOpacity || this.opacity < this.minOpacity) {
+            this.blinkDirection *= -1;
+            this.opacity = Math.max(this.minOpacity, Math.min(this.maxOpacity, this.opacity));
+        }
+
+        if (this.x < 0) this.x = this.canvasWidth;
+        if (this.x > this.canvasWidth) this.x = 0;
+        if (this.y < 0) this.y = this.canvasHeight;
+        if (this.y > this.canvasHeight) this.y = 0;
+    }
+
+    draw() {
+        if (!bgCtx) return;
+        bgCtx.save();
+        bgCtx.globalAlpha = Math.max(0, this.opacity);
+        // Usar un color un poco más brillante para las estrellas para que destaquen más con el estiramiento
+        bgCtx.fillStyle = 'rgba(230, 230, 255, 1)'; 
+
+        const currentSpeedX = this.baseSpeedX * starSpeedMultiplier;
+        const currentSpeedY = this.baseSpeedY * starSpeedMultiplier;
+        const speedMagnitude = Math.sqrt(currentSpeedX * currentSpeedX + currentSpeedY * currentSpeedY);
+
+        // Aplicar estiramiento solo si el modo combo está activo y la velocidad es perceptible
+        if (currentGameMode === 'combo' && isComboActive && starSpeedMultiplier > 1.5 && speedMagnitude > 0.1) { 
+            bgCtx.beginPath();
+            bgCtx.moveTo(this.x, this.y);
+            
+            // Calcular la longitud del estiramiento basada en la magnitud de la velocidad actual
+            // El multiplicador (ej. 5 o 10) y el Math.min controlan cuán largas son las estelas
+            const stretchFactor = 8; // Aumentar para estelas más largas
+            const maxStretch = 20;   // Longitud máxima de la estela
+            const dX = currentSpeedX / speedMagnitude; // Dirección normalizada X
+            const dY = currentSpeedY / speedMagnitude; // Dirección normalizada Y
+            const stretchLength = Math.min(maxStretch, speedMagnitude * stretchFactor);
+
+            bgCtx.lineTo(this.x - dX * stretchLength, 
+                         this.y - dY * stretchLength);
+            
+            bgCtx.lineWidth = this.size * 1.2; // Ligeramente más gruesas las líneas
+            bgCtx.strokeStyle = bgCtx.fillStyle;
+            bgCtx.lineCap = 'round'; // Extremos redondeados para las estelas
+            bgCtx.stroke();
+        } else {
+            bgCtx.beginPath();
+            bgCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            bgCtx.fill();
+        }
+        bgCtx.restore();
+    }
+}
+
+// --- FUNCIONES DEL FONDO ANIMADO ---
+function setupBackgroundCanvas() {
+    if (!backgroundCanvas || !bgCtx) {
+        console.error("BG DEBUG: backgroundCanvas o bgCtx no están disponibles.");
+        return false; // Indicar fallo
+    }
+    backgroundCanvas.width = window.innerWidth;
+    backgroundCanvas.height = window.innerHeight;
+    console.log("BG DEBUG: Background canvas re-configurado:", backgroundCanvas.width, "x", backgroundCanvas.height);
+
+    stars = []; 
+    for (let i = 0; i < NUM_STARS; i++) {
+        stars.push(new Star(backgroundCanvas.width, backgroundCanvas.height));
+    }
+    console.log(`BG DEBUG: ${stars.length} estrellas creadas/recreadas.`);
+    return true; // Indicar éxito
+}
+
+function manageStarAnimation(start) {
+    if (start) {
+        if (!animationFrameIdBackground && stars.length > 0 && backgroundCanvas && backgroundCanvas.style.display !== 'none') {
+            console.log("BG DEBUG: Iniciando animación de estrellas.");
+            animateBackgroundStars();
+        }
+    } else {
+        if (animationFrameIdBackground) {
+            console.log("BG DEBUG: Deteniendo animación de estrellas.");
+            cancelAnimationFrame(animationFrameIdBackground);
+            animationFrameIdBackground = null;
+        }
+    }
+}
+
+function animateBackgroundStars() {
+    if (!bgCtx || !backgroundCanvas || backgroundCanvas.style.display === 'none') {
+        animationFrameIdBackground = null; // Detener si el canvas no debería estar visible
+        console.log("BG DEBUG: Animación de estrellas detenida porque el canvas está oculto.");
+        return;
+    }
+
+    // Determinar multiplicador de velocidad basado en el estado del combo
+    if (currentGameMode === 'combo' && isComboActive) {
+        starSpeedMultiplier = COMBO_STAR_SPEED_MULTIPLIER;
+    } else {
+        starSpeedMultiplier = 1;
+    }
+
+    bgCtx.fillStyle = 'rgba(30, 20, 50, 1)'; 
+    bgCtx.fillRect(0, 0, backgroundCanvas.width, backgroundCanvas.height);
+    
+    stars.forEach(star => {
+        star.update();
+        star.draw();
+    });
+
+    animationFrameIdBackground = requestAnimationFrame(animateBackgroundStars);
 }
