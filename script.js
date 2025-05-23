@@ -2,6 +2,7 @@
 const boardElement = document.getElementById("board");
 const scoreElement = document.getElementById("score");
 const piecesElement = document.getElementById("pieces");
+const gameContainerElement = document.getElementById('game-container'); // Para el efecto de combo
 
 // Elementos de Pantallas y Modales
 const startScreenElement = document.getElementById('start-screen');
@@ -13,6 +14,7 @@ const gameArea = document.getElementById('game-area');
 const gameOverModal = document.getElementById('gameOverModal');
 const finalScoreElement = document.getElementById('finalScore'); // Ya existía, asegurar que esté aquí
 const gameOverTitleElement = document.getElementById('gameOverTitle'); // Ya existía, asegurar que esté aquí
+const comboStartEffectElement = document.getElementById('combo-start-effect'); // Nuevo elemento para efecto Combo Start
 
 // Botones
 const modeLevelsButton = document.getElementById('modeLevelsButton');
@@ -42,6 +44,33 @@ let currentGameMode = null; // 'levels' o 'combo' - para lógica interna del jue
 let currentScreen = 'mode-select'; // 'mode-select', 'mode-description', 'gameplay', 'game-over'
 let selectedModeForDescription = null; // Almacena el modo mientras se muestra su descripción
 
+// --- NUEVA LÓGICA DE COMBOS ---
+// Constantes para la nueva lógica de combos
+const COMBO_BASE_POINTS = { // Puntos base por línea, antes de combo (REINTRODUCIDO)
+    1: 100, // 1 línea
+    2: 250, // 2 líneas
+    3: 500, // 3 líneas
+    4: 800  // 4 líneas (Tetris)
+};
+const COMBO_ACTIVATION_LINES_REQUIRED = 5; // Líneas para activar el combo
+const COMBO_ACTIVATION_WINDOW_MS = 10000;  // Ventana de tiempo para activar (10s)
+const COMBO_PROGRESSION_LINES_REQUIRED = 1; // Líneas para mantener/incrementar el combo
+const COMBO_PROGRESSION_WINDOW_MS = 5000;   // Ventana de tiempo para progresar (5s)
+const COMBO_MULTIPLIERS_NEW = [1, 2, 3, 4, 5]; // Multiplicadores: x1 (base), x2, x3, x4, x5
+const MAX_COMBO_LEVEL = COMBO_MULTIPLIERS_NEW.length - 1;
+
+// Estado del combo
+let isComboActive = false;
+let linesClearedForComboActivation = 0;
+let timeOfFirstLineClearForActivation = 0;
+let linesClearedInCurrentComboWindow = 0;
+let currentComboLevel = 0; // Índice para COMBO_MULTIPLIERS_NEW
+let comboProgressionTimeoutId = null;
+let comboActivationHelperTimeoutId = null; // Para resetear el contador de activación si pasa mucho tiempo
+
+let comboMessageElement = null; // Para "¡Combo xN!"
+// window.comboTimeoutId = null; // Ya no se usa esta variable global así
+
 const MODE_DETAILS = {
     levels: {
         title: "Modo Niveles (Campaña)",
@@ -49,7 +78,7 @@ const MODE_DETAILS = {
     },
     combo: {
         title: "Modo Combo Infinito",
-        description: "Juega sin fin e intenta alcanzar la mayor puntuación. ¡Encadena eliminaciones de líneas rápidamente para activar multiplicadores de combo! Si limpias 5 líneas en menos de 10 segundos, tu puntuación se duplica (x2). Sigue así para alcanzar x3, x4, ¡y hasta x5! Si tardas más de 10 segundos entre eliminaciones, el combo se reinicia."
+        description: "Juega sin fin e intenta alcanzar la mayor puntuación. ¡Encadena eliminaciones de líneas rápidamente para activar multiplicadores de combo! Si limpias 5 líneas en menos de 10 segundos, tu puntuación se duplica (x2). Sigue así para alcanzar x3, x4, ¡y hasta x5! Si tardas más de 5 segundos en eliminar al menos 1 línea, el combo se reinicia."
     }
 };
 
@@ -629,47 +658,40 @@ function createBoardCells() {
 }
 
 function initializeGameMode(mode) {
-    console.log(`Initializing game logic for mode: ${mode}`);
-    currentGameMode = mode; 
-
+    console.log(`Initializing game mode: ${mode}`);
+    currentGameMode = mode;
+    currentScreen = 'gameplay';
+    
+    board.length = 0; 
+    for (let i = 0; i < 10; i++) { 
+        board.push(Array(10).fill(0));
+    }
     score = 0;
-    updateScore(0);
-    board.length = 0;
-    for (let r = 0; r < 10; r++) {
-        board[r] = Array(10).fill(0);
-    }
+    updateScore(0); 
     
-    const existingCells = boardElement.querySelectorAll('.cell');
-    existingCells.forEach(cell => {
-        cell.style.backgroundColor = '';
-        cell.classList.remove('piece-block', 'line-shrink-fade-out', 'pulse-block-animation');
-        delete cell.dataset.pieceColor;
-        cell.style.opacity = '';
-        cell.style.transform = '';
-    });
-    
-    // Crear celdas del tablero si no existen (primera vez)
-    if (boardElement.children.length === 0) {
-        createBoardCells();
-    }
+    // Resetear estado del combo para la NUEVA lógica
+    isComboActive = false;
+    linesClearedForComboActivation = 0;
+    timeOfFirstLineClearForActivation = 0;
+    linesClearedInCurrentComboWindow = 0;
+    currentComboLevel = 0;
+    clearTimeout(comboProgressionTimeoutId);
+    comboProgressionTimeoutId = null;
+    clearTimeout(comboActivationHelperTimeoutId);
+    comboActivationHelperTimeoutId = null;
 
-    piecesElement.innerHTML = '';
+    hideComboMessage();    
+    updateComboVisuals(); // Asegurar que no haya efectos de combo al inicio
+    // clearTimeout(window.comboTimeoutId); // Ya no se usa
+
+    if(piecesElement) piecesElement.innerHTML = '';
     displayPieces(); 
 
-    if (mode === 'levels') {
-        console.log("Modo Niveles seleccionado para inicializar.");
-        if(MODE_DETAILS.levels.description.includes("(Próximamente)")){
-            alert(MODE_DETAILS.levels.description);
-            navigateTo('mode-select'); // Volver a la selección de modo
-            return false; // Indicar que la inicialización no debe continuar a 'gameplay'
-        }
-        // TODO: Cargar nivel 1, establecer objetivos, etc.
-    } else if (mode === 'combo') {
-        console.log("Modo Combo seleccionado para inicializar.");
-        // TODO: Resetear variables de combo, etc.
-    }
-    checkGameOver(); 
-    return true; // Indicar que la inicialización fue exitosa (o al menos no detenida)
+    createBoardCells(); 
+    updateScreenVisibility();
+
+    console.log("Tablero y juego reiniciados para el modo:", mode);
+    console.log("Board state after init: ", JSON.parse(JSON.stringify(board)));
 }
 
 function showModeSelector() {
@@ -737,44 +759,52 @@ function placePiece(pieceMatrix, startRow, startCol, pieceColorForBoard) {
 }
 
 function showFloatingScore(points, baseElement) {
-    const scoreTextElement = document.createElement('div');
-    scoreTextElement.textContent = `+${points}`;
-    scoreTextElement.classList.add('floating-score');
-    
-    const gameContainer = document.getElementById('game-container');
-    const boardRect_float = boardElement.getBoundingClientRect(); 
-    const gameContainerRect = gameContainer.getBoundingClientRect();
+    const scoreText = document.createElement('div');
+    scoreText.textContent = `+${points}`;
+    scoreText.classList.add('floating-score');
+    document.body.appendChild(scoreText); // Añadir al body para posicionamiento absoluto global
 
-    const boardCenterXInContainer = (boardRect_float.left - gameContainerRect.left) + (boardRect_float.width / 2);
-    const boardCenterYInContainer = (boardRect_float.top - gameContainerRect.top) + (boardRect_float.height / 2);
+    const baseRect = baseElement.getBoundingClientRect();
+    const boardRect = boardElement.getBoundingClientRect();
 
-    scoreTextElement.style.left = `${boardCenterXInContainer}px`;
-    scoreTextElement.style.top = `${boardCenterYInContainer - 30}px`; 
-    scoreTextElement.style.transform = 'translateX(-50%)'; 
+    // Posicionar el texto flotante cerca del elemento base (ej. primera línea limpiada)
+    // Ajustar para que aparezca más centrado en el tablero, no solo sobre la celda
+    const boardCenterX = boardRect.left + boardRect.width / 2;
+    const scoreTextWidthHalf = 75; // Ancho estimado del texto de puntuación / 2
 
-    gameContainer.appendChild(scoreTextElement);
-    scoreTextElement.classList.add('floating-score-animation');
+    scoreText.style.left = `${boardCenterX - scoreTextWidthHalf}px`;
+    scoreText.style.top = `${baseRect.top - 30}px`; // Un poco arriba de la línea
+
+    scoreText.classList.add('floating-score-animation');
 
     setTimeout(() => {
-        if (scoreTextElement.parentNode) {
-            scoreTextElement.parentNode.removeChild(scoreTextElement);
+        if (scoreText.parentNode) {
+            scoreText.parentNode.removeChild(scoreText);
         }
-    }, FLOATING_SCORE_ANIMATION_DURATION); 
+    }, FLOATING_SCORE_ANIMATION_DURATION); // Duración de la animación CSS
 }
 
 async function checkAndClearLines() {
     console.log("--- checkAndClearLines INICIO ---");
-    let linesClearedThisTurn = 0;
-    const rowsToClearIndices = [];
-    const colsToClearIndices = [];
+    let linesClearedThisTurnCount = 0; 
     const cellsToAnimateAndClear = new Set(); 
     let firstClearedCellElement = null; 
 
-    for (let r = 0; r < 10; r++) {
-        if (board[r].every(cellState => cellState === 1)) {
-            rowsToClearIndices.push(r);
-            for (let c_cell = 0; c_cell < 10; c_cell++) {
-                const cellElement = boardElement.querySelector(`[data-row='${r}'][data-col='${c_cell}']`);
+    const numRows = board.length;
+    const numCols = board[0].length;
+
+    // 1. Identificar filas completas
+    for (let r = 0; r < numRows; r++) {
+        let rowIsFull = true;
+        for (let c_idx = 0; c_idx < numCols; c_idx++) {
+            if (board[r][c_idx] === 0) {
+                rowIsFull = false; break;
+            }
+        }
+        if (rowIsFull) {
+            linesClearedThisTurnCount++;
+            for (let c_idx = 0; c_idx < numCols; c_idx++) {
+                const cellElement = boardElement.children[r * numCols + c_idx];
                 if (cellElement) {
                     cellsToAnimateAndClear.add(cellElement);
                     if (!firstClearedCellElement) firstClearedCellElement = cellElement;
@@ -783,94 +813,192 @@ async function checkAndClearLines() {
         }
     }
 
-    for (let c = 0; c < 10; c++) {
+    // 2. Identificar columnas completas
+    for (let c = 0; c < numCols; c++) {
         let colIsFull = true;
-        for (let r_idx = 0; r_idx < 10; r_idx++) {
+        for (let r_idx = 0; r_idx < numRows; r_idx++) {
             if (board[r_idx][c] === 0) {
-                colIsFull = false;
-                break;
+                colIsFull = false; break;
             }
         }
         if (colIsFull) {
-            colsToClearIndices.push(c);
-            for (let r_idx = 0; r_idx < 10; r_idx++) {
-                const cellElement = boardElement.querySelector(`[data-row='${r_idx}'][data-col='${c}']`);
+            let newColLine = false;
+            for (let r_idx = 0; r_idx < numRows; r_idx++) {
+                const cellElement = boardElement.children[r_idx * numCols + c];
+                if (cellElement && !cellsToAnimateAndClear.has(cellElement)) newColLine = true;
                 if (cellElement) {
-                    cellsToAnimateAndClear.add(cellElement);
-                    if (!firstClearedCellElement) firstClearedCellElement = cellElement; 
+                     cellsToAnimateAndClear.add(cellElement);
+                     if (!firstClearedCellElement) firstClearedCellElement = cellElement;
                 }
             }
+            if (newColLine) linesClearedThisTurnCount++;
         }
     }
+    
+    console.log(`Líneas (filas/columnas) para procesar en combo: ${linesClearedThisTurnCount}`);
 
-    linesClearedThisTurn = rowsToClearIndices.length;
-    colsToClearIndices.forEach(c_idx => {
-        let isNewColLine = false;
-        for (let r_idx = 0; r_idx < 10; r_idx++) {
-            if (!rowsToClearIndices.includes(r_idx) && board[r_idx][c_idx] === 1) {
-                isNewColLine = true;
-                break;
+    if (linesClearedThisTurnCount > 0) {
+        if (currentGameMode === 'combo') {
+            const currentTime = Date.now();
+            clearTimeout(comboProgressionTimeoutId); // Limpiar siempre el timer de progresión si se limpian líneas
+
+            if (!isComboActive) {
+                // --- Lógica de Activación del Combo ---
+                if (linesClearedForComboActivation === 0) { // Primera limpieza en esta "racha" de activación
+                    timeOfFirstLineClearForActivation = currentTime;
+                    // Iniciar un helper para resetear el contador de activación si pasan los 10s sin lograrlo
+                    clearTimeout(comboActivationHelperTimeoutId);
+                    comboActivationHelperTimeoutId = setTimeout(() => {
+                        console.log("Ventana de activación de combo expiró. Reseteando contador.");
+                        linesClearedForComboActivation = 0;
+                        timeOfFirstLineClearForActivation = 0;
+                    }, COMBO_ACTIVATION_WINDOW_MS + 500); // +500ms de margen
+                }
+                
+                if (currentTime - timeOfFirstLineClearForActivation < COMBO_ACTIVATION_WINDOW_MS) {
+                    linesClearedForComboActivation += linesClearedThisTurnCount;
+                    console.log(`Activación Combo: ${linesClearedForComboActivation}/${COMBO_ACTIVATION_LINES_REQUIRED} líneas en ${COMBO_ACTIVATION_WINDOW_MS / 1000}s`);
+
+                    if (linesClearedForComboActivation >= COMBO_ACTIVATION_LINES_REQUIRED) {
+                        isComboActive = true;
+                        currentComboLevel = 1; // Inicia en x2 (índice 1)
+                        linesClearedInCurrentComboWindow = 0; // Resetear para la primera ventana de progresión
+                        clearTimeout(comboActivationHelperTimeoutId); // Ya no es necesario
+                        linesClearedForComboActivation = 0; // Resetear para futura reactivación si se pierde
+                        timeOfFirstLineClearForActivation = 0;
+
+
+                        console.log(`¡COMBO ACTIVADO! Nivel: ${currentComboLevel} (x${COMBO_MULTIPLIERS_NEW[currentComboLevel]})`);
+                        showComboMessage(COMBO_MULTIPLIERS_NEW[currentComboLevel], "¡Combo Activado!");
+                        updateComboVisuals();
+                        
+                        // Mostrar efecto de Combo Start
+                        if (comboStartEffectElement) {
+                            comboStartEffectElement.classList.remove('hidden');
+                            comboStartEffectElement.classList.add('animate');
+                            setTimeout(() => {
+                                comboStartEffectElement.classList.add('hidden');
+                                comboStartEffectElement.classList.remove('animate');
+                            }, 1200); // Duración de la animación comboStartZoom
+                        }
+                        
+                        // Iniciar temporizador para la primera ventana de progresión
+                        comboProgressionTimeoutId = setTimeout(handleComboProgressionTimeout, COMBO_PROGRESSION_WINDOW_MS);
+                    }
+                } else {
+                    // Pasó demasiado tiempo desde la primera limpieza para activación, resetear.
+                    console.log("Tiempo de activación de combo excedido. Reiniciando conteo de activación.");
+                    linesClearedForComboActivation = linesClearedThisTurnCount; // Empezar nuevo conteo
+                    timeOfFirstLineClearForActivation = currentTime;
+                    clearTimeout(comboActivationHelperTimeoutId);
+                     comboActivationHelperTimeoutId = setTimeout(() => {
+                        linesClearedForComboActivation = 0;
+                        timeOfFirstLineClearForActivation = 0;
+                    }, COMBO_ACTIVATION_WINDOW_MS + 500);
+                }
+
+            } else { // --- Lógica de Progresión del Combo (isComboActive === true) ---
+                linesClearedInCurrentComboWindow += linesClearedThisTurnCount;
+                console.log(`Progresión Combo: ${linesClearedInCurrentComboWindow}/${COMBO_PROGRESSION_LINES_REQUIRED} líneas en ${COMBO_PROGRESSION_WINDOW_MS / 1000}s`);
+
+                if (linesClearedInCurrentComboWindow >= COMBO_PROGRESSION_LINES_REQUIRED) {
+                    if (currentComboLevel < MAX_COMBO_LEVEL) {
+                        currentComboLevel++;
+                    }
+                    linesClearedInCurrentComboWindow = 0; // Resetear para la siguiente ventana
+                    
+                    console.log(`¡COMBO CONTINÚA! Nivel: ${currentComboLevel} (x${COMBO_MULTIPLIERS_NEW[currentComboLevel]})`);
+                    showComboMessage(COMBO_MULTIPLIERS_NEW[currentComboLevel]);
+                    updateComboVisuals();
+                }
+                // Siempre reiniciar el temporizador de progresión si se limpiaron líneas y el combo está activo
+                comboProgressionTimeoutId = setTimeout(handleComboProgressionTimeout, COMBO_PROGRESSION_WINDOW_MS);
             }
         }
-        if (isNewColLine) {
-            linesClearedThisTurn++;
+
+        // Cálculo de puntos y efectos visuales de limpieza (esto es general)
+        const pointsEarned = calculatePoints(linesClearedThisTurnCount); 
+        updateScore(pointsEarned);
+        if (firstClearedCellElement) {
+            showFloatingScore(pointsEarned, firstClearedCellElement);
         }
-    });
-    console.log(`Líneas calculadas para puntaje: ${linesClearedThisTurn}`);
-    console.log(`Celdas a animar y limpiar: ${cellsToAnimateAndClear.size}`);
 
-    if (cellsToAnimateAndClear.size > 0) {
         cellsToAnimateAndClear.forEach(cellElement => {
-            cellElement.classList.add('line-shrink-fade-out'); 
+            cellElement.classList.add('line-shrink-fade-out');
         });
-
-        console.log("Clase 'line-shrink-fade-out' añadida. Realizando limpieza lógica inmediatamente.");
         
-        // La limpieza lógica ahora ocurre inmediatamente.
-        // La animación CSS se ejecutará visualmente de forma independiente.
         cellsToAnimateAndClear.forEach(cellElement => {
             const row_cell = parseInt(cellElement.dataset.row);
             const col_cell = parseInt(cellElement.dataset.col);
             board[row_cell][col_cell] = 0; 
-            // No establecemos backgroundColor aquí todavía, dejamos que la animación lo maneje primero.
             delete cellElement.dataset.pieceColor; 
             cellElement.classList.remove('piece-block'); 
-
-            // Programar la limpieza de estilos de animación después de que la animación termine
             setTimeout(() => {
-                // Comprobar si la celda/elemento aún existe en el DOM por si acaso
                 if (cellElement && cellElement.parentNode) { 
                     cellElement.classList.remove('line-shrink-fade-out');
                     cellElement.style.opacity = ''; 
                     cellElement.style.transform = ''; 
-                    cellElement.style.backgroundColor = ''; // Crucial: Resetear al color de celda vacía por defecto
+                    cellElement.style.backgroundColor = ''; 
                 }
             }, ANIMATION_DURATION);
         });
 
-        if (linesClearedThisTurn > 0) {
-            console.log(`${linesClearedThisTurn} línea(s) eliminada(s). Actualizando puntaje...`);
-            const pointsEarned = calculatePoints(linesClearedThisTurn);
-            updateScore(pointsEarned); 
-            if (firstClearedCellElement) { 
-                showFloatingScore(pointsEarned, firstClearedCellElement);
-            }
-        }
-        // Ya no devolvemos una promesa basada en setTimeout, sino que resolvemos inmediatamente
-        // porque la lógica principal de limpieza ya se hizo.
-        // La función sigue siendo async por el 'await' en dragEnd, y esto es compatible.
-        return Promise.resolve();
-    } else {
-      return Promise.resolve();
+        if (checkGameOver()) {
+            handleGameOver();
+        } 
+        return Promise.resolve(linesClearedThisTurnCount); 
+    } else { 
+        // NO se limpiaron líneas esta vez.
+        // Si el combo estaba activo, el temporizador de progresión (comboProgressionTimeoutId) sigue corriendo.
+        // Si expira, handleComboProgressionTimeout se encargará de romper el combo.
+        // No rompemos el combo aquí solo por no limpiar líneas en un turno,
+        // ya que el jugador tiene 5 segundos para lograr las 2 líneas.
+        console.log("No se limpiaron líneas. El temporizador de progresión de combo (si activo) continúa.");
+        return Promise.resolve(0); 
     }
 }
 
-function calculatePoints(clearedLinesCount) {
-    let points = clearedLinesCount * 10;
-    if (clearedLinesCount > 1) {
-        points += (clearedLinesCount - 1) * clearedLinesCount * 5; 
+function handleComboProgressionTimeout() {
+    console.log("Temporizador de progresión de combo expiró.");
+    if (isComboActive) {
+        if (linesClearedInCurrentComboWindow < COMBO_PROGRESSION_LINES_REQUIRED) {
+            console.log("No se cumplió el objetivo de líneas para mantener el combo. ¡COMBO ROTO!");
+            isComboActive = false;
+            currentComboLevel = 0; // Resetear al multiplicador base x1
+            linesClearedForComboActivation = 0; // Permitir reactivación
+            timeOfFirstLineClearForActivation = 0;
+            hideComboMessage();
+            updateComboVisuals();
+        } else {
+            // Se cumplió justo a tiempo o un poco antes, y checkAndClearLines ya reinició el timer.
+            // Esto es un fallback, pero la lógica principal está en checkAndClearLines.
+            // Si llegamos aquí y SÍ se cumplió, significa que la última limpieza de líneas
+            // reinició el timer. No hacemos nada para romperlo.
+            console.log("Objetivo cumplido a tiempo o el timer fue reiniciado. El combo continúa.");
+             // Podríamos por seguridad resetear linesClearedInCurrentComboWindow aquí si no se hizo
+             // linesClearedInCurrentComboWindow = 0; // Y reiniciar el timer
+             // clearTimeout(comboProgressionTimeoutId);
+             // comboProgressionTimeoutId = setTimeout(handleComboProgressionTimeout, COMBO_PROGRESSION_WINDOW_MS);
+
+        }
     }
-    return points;
+    linesClearedInCurrentComboWindow = 0; // Siempre resetear al expirar la ventana.
+}
+
+function calculatePoints(clearedLinesCount) {
+    if (clearedLinesCount === 0) return 0;
+
+    let basePoints = COMBO_BASE_POINTS[Math.min(clearedLinesCount, 4)] || COMBO_BASE_POINTS[1];
+    let finalPoints = basePoints;
+    let currentMultiplier = 1;
+
+    if (currentGameMode === 'combo' && isComboActive && currentComboLevel >= 0 && currentComboLevel < COMBO_MULTIPLIERS_NEW.length) {
+        currentMultiplier = COMBO_MULTIPLIERS_NEW[currentComboLevel];
+        finalPoints = basePoints * currentMultiplier;
+    }
+    
+    console.log(`Calculating points: lines=${clearedLinesCount}, base=${basePoints}, comboActive=${isComboActive}, comboLvl=${currentComboLevel}, multiplier=${currentMultiplier}, final=${Math.round(finalPoints)}`);
+    return Math.round(finalPoints);
 }
 
 function updateScore(pointsJustEarned) {
@@ -913,7 +1041,20 @@ function handleGameOver() {
     document.removeEventListener('mouseup', dragEnd);
     document.removeEventListener('touchend', dragEnd);
 
-    navigateTo('game-over'); // Actualiza currentScreen y oculta otras pantallas
+    // Resetear estado del combo al terminar el juego
+    isComboActive = false;
+    linesClearedForComboActivation = 0;
+    timeOfFirstLineClearForActivation = 0;
+    linesClearedInCurrentComboWindow = 0;
+    currentComboLevel = 0;
+    clearTimeout(comboProgressionTimeoutId);
+    comboProgressionTimeoutId = null;
+    clearTimeout(comboActivationHelperTimeoutId);
+    comboActivationHelperTimeoutId = null;
+    hideComboMessage();
+    updateComboVisuals();
+
+    navigateTo('game-over'); 
 
     // Configurar y mostrar el modal de Game Over
     if (gameOverTitleElement) {
@@ -1056,4 +1197,58 @@ function navigateTo(screen, modeData = null) {
         selectedModeForDescription = null; // Limpiar al volver a la selección
     }
     updateScreenVisibility();
+}
+
+// Funciones para mostrar/ocultar el mensaje de combo
+function showComboMessage(multiplier, customText = null) { 
+    if (!comboMessageElement) {
+        comboMessageElement = document.createElement('div');
+        comboMessageElement.id = 'combo-message';
+        const scoreContainer = document.getElementById('score-container') || scoreElement.parentNode;
+        if (scoreContainer) {
+            scoreContainer.insertBefore(comboMessageElement, scoreElement);
+        } else {
+            document.body.appendChild(comboMessageElement); 
+        }
+    }
+
+    // Limpiar clases de texto de combo anteriores
+    for (let i = 1; i <= MAX_COMBO_LEVEL; i++) {
+        comboMessageElement.classList.remove(`combo-text-level-${i}`);
+    }
+
+    // Aplicar nueva clase de texto de combo si el combo está activo y el nivel es mayor que 0
+    if (isComboActive && currentComboLevel > 0 && currentComboLevel <= MAX_COMBO_LEVEL) {
+        comboMessageElement.classList.add(`combo-text-level-${currentComboLevel}`);
+    }
+
+    comboMessageElement.textContent = customText ? `${customText} (x${multiplier})` : `¡Combo x${multiplier}!`;
+    comboMessageElement.classList.add('visible');
+    comboMessageElement.classList.remove('hidden');
+}
+
+function hideComboMessage() {
+    if (comboMessageElement) {
+        comboMessageElement.classList.add('hidden'); // Usar hidden para control con CSS
+        comboMessageElement.classList.remove('visible');
+        // Limpiar clases de texto de combo al ocultar
+        for (let i = 1; i <= MAX_COMBO_LEVEL; i++) {
+            comboMessageElement.classList.remove(`combo-text-level-${i}`);
+        }
+    }
+}
+
+// --- NUEVA FUNCIÓN PARA ACTUALIZAR VISUALES DEL COMBO ---
+function updateComboVisuals() {
+    if (!gameContainerElement) return;
+
+    // Limpiar clases de combo anteriores del gameContainer
+    for (let i = 1; i <= MAX_COMBO_LEVEL; i++) { 
+        gameContainerElement.classList.remove(`combo-level-${i}`);
+    }
+    gameContainerElement.classList.remove('combo-board-active-effect');
+
+    if (isComboActive && currentComboLevel > 0 && currentComboLevel <= MAX_COMBO_LEVEL) {
+        gameContainerElement.classList.add(`combo-level-${currentComboLevel}`);
+    }
 }

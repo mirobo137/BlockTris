@@ -14,11 +14,13 @@ body {
 
 #game-container {
   display: inline-block;
+  position: relative; /* Añadido para el posicionamiento absoluto de hijos como el canvas */
   margin-top: 20px;
   background-color: rgba(255, 255, 255, 0.1);
   padding: 25px;
   border-radius: 15px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+  transition: box-shadow 0.5s ease-in-out; /* Para suavizar la activación/desactivación del efecto */
 }
 
 #board {
@@ -286,8 +288,92 @@ body {
 }
 
 .floating-score-animation {
-  animation: floatAndFade 1.2s ease-out forwards;
-  /* 'forwards' es importante para que desaparezca (opacity: 0) */
+  animation: floatAndFade 1.2s forwards ease-out;
+}
+
+/* Estilos para el mensaje de Combo */
+#combo-message {
+  position: absolute; 
+  left: 50%; 
+  transform: translateX(-50%);
+  top: 5px; /* Más abajo, justo encima o cerca del score. Ajustar según el layout del scoreContainer */
+  color: #FFD700; /* Dorado más intenso */
+  font-size: 1.4em; 
+  font-weight: bold;
+  text-shadow: 1px 1px 0px #000, 
+               1px -1px 0px #000, 
+               -1px 1px 0px #000, 
+               -1px -1px 0px #000, 
+               2px 2px 5px rgba(255,165,0,0.8); /* Sombra exterior más de "fuego" */
+  padding: 6px 12px;
+  background-color: rgba(50,20,0,0.6); /* Fondo oscuro rojizo/naranja */
+  border: 1px solid rgba(255,165,0,0.7);
+  border-radius: 8px;
+  z-index: 1500; 
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out, transform 0.3s ease-in-out;
+  will-change: transform, opacity; /* Para optimizar animación */
+}
+
+@keyframes pulseComboMessage {
+  0% { transform: translateX(-50%) scale(1); opacity: 0.9; }
+  50% { transform: translateX(-50%) scale(1.1); opacity: 1; }
+  100% { transform: translateX(-50%) scale(1); opacity: 0.9; }
+}
+
+#combo-message.visible {
+    opacity: 1;
+    visibility: visible;
+    /* transform: translateX(-50%) translateY(-5px); No, la animación lo maneja */
+    animation: pulseComboMessage 1s infinite ease-in-out;
+}
+
+#combo-message.hidden {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-50%) translateY(0px);
+}
+
+/* Estilos adicionales para #combo-message según el nivel de combo */
+#combo-message.combo-text-level-1 { /* Azul para x2 */
+  color: #89d6ff; /* Azul claro */
+  text-shadow: 1px 1px 0px #000, 
+               1px -1px 0px #000, 
+               -1px 1px 0px #000, 
+               -1px -1px 0px #000, 
+               0 0 10px rgba(0, 150, 255, 0.9), /* Aura azul */
+               0 0 20px rgba(0, 150, 255, 0.7);
+}
+
+#combo-message.combo-text-level-2 { /* Verde para x3 */
+  color: #8affb8; /* Verde claro */
+  text-shadow: 1px 1px 0px #000, 
+               1px -1px 0px #000, 
+               -1px 1px 0px #000, 
+               -1px -1px 0px #000, 
+               0 0 10px rgba(0, 200, 100, 0.9), /* Aura verde */
+               0 0 20px rgba(0, 200, 100, 0.7);
+}
+
+#combo-message.combo-text-level-3 { /* Dorado para x4 */
+  color: #FFEB3B; /* Dorado brillante (más que el base) */
+  text-shadow: 1px 1px 0px #000, 
+               1px -1px 0px #000, 
+               -1px 1px 0px #000, 
+               -1px -1px 0px #000, 
+               0 0 12px rgba(255, 220, 0, 0.95), /* Aura dorada intensa */
+               0 0 25px rgba(255, 200, 0, 0.8);
+}
+
+#combo-message.combo-text-level-4 { /* Naranja/Rojo para x5 */
+  color: #ffb366; /* Naranja claro */
+  text-shadow: 1px 1px 0px #000, 
+               1px -1px 0px #000, 
+               -1px 1px 0px #000, 
+               -1px -1px 0px #000, 
+               0 0 15px rgba(255, 100, 0, 0.95), /* Aura naranja/roja */
+               0 0 30px rgba(255, 80, 0, 0.8);
 }
 
 /* Nueva animación para limpieza de líneas: Encoger y Desvanecer */
@@ -434,4 +520,97 @@ body {
 #pieces-container h3 {
     margin-top: 0; /* Ajustar si el título está muy arriba */
     margin-bottom: 10px;
+    font-size: 1.1em;
+}
+
+/* Progresión visual del combo en el marco del tablero */
+#game-container.combo-level-1 { /* x2 */
+  box-shadow: 0 0 15px 5px rgba(0, 150, 255, 0.7), /* Azul brillante */
+              inset 0 0 10px rgba(0, 150, 255, 0.3);
+  transition: box-shadow 0.3s ease-out;
+}
+
+#game-container.combo-level-2 { /* x3 */
+  box-shadow: 0 0 20px 7px rgba(0, 200, 100, 0.75), /* Verde esmeralda */
+              inset 0 0 12px rgba(0, 200, 100, 0.35);
+  transition: box-shadow 0.3s ease-out;
+}
+
+#game-container.combo-level-3 { /* x4 */
+  box-shadow: 0 0 25px 9px rgba(255, 200, 0, 0.8), /* Amarillo dorado */
+              inset 0 0 15px rgba(255, 200, 0, 0.4);
+  transition: box-shadow 0.3s ease-out;
+}
+
+@keyframes maxComboPulse {
+  0% {
+    box-shadow: 0 0 30px 10px rgba(255, 100, 0, 0.85), /* Naranja/Rojo intenso */
+                inset 0 0 18px rgba(255, 100, 0, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 35px 13px rgba(255, 80, 0, 0.95), /* Más intenso */
+                inset 0 0 20px rgba(255, 80, 0, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 30px 10px rgba(255, 100, 0, 0.85),
+                inset 0 0 18px rgba(255, 100, 0, 0.45);
+  }
+}
+
+#game-container.combo-level-4 { /* x5 - Máximo */
+  animation: maxComboPulse 1s infinite ease-in-out;
+  /* El box-shadow base se define en el keyframe */
+}
+
+/* Estilos para el lienzo de partículas */
+#particle-canvas {
+  position: absolute;
+  top: 0; /* Se alineará con game-container si este es position: relative */
+  left: 0;
+  pointer-events: none; /* Muy importante: permite que los clics pasen a través del canvas */
+  z-index: 100; /* Encima del tablero pero debajo de otros elementos UI como el mensaje de combo o modales */
+  /* El tamaño se establecerá con JavaScript para que coincida con el #board */
+}
+
+/* Efecto de "Combo Start!" */
+#combo-start-effect {
+  position: absolute;
+  top: 50%; /* Centrado verticalmente en su contenedor padre (game-container) */
+  left: 50%; /* Centrado horizontalmente */
+  transform: translate(-50%, -50%) scale(0.8);
+  font-size: 4em; /* Ajustado, 5em podría ser muy grande para el tablero */
+  font-weight: bold;
+  color: #FFEB3B; /* Dorado */
+  text-shadow: 2px 2px 0 #000, 
+               3px 3px 0 #c00, /* Sombra roja para más impacto */
+               0 0 20px #fff, 
+               0 0 35px #FFD700;
+  z-index: 1600; 
+  opacity: 0;
+  pointer-events: none;
+  /* La clase hidden ya maneja display: none, así que no necesitamos transition aquí inicialmente */
+}
+
+#combo-start-effect.animate {
+  opacity: 1; /* Hacer visible para la animación */
+  animation: comboStartZoom 1.2s ease-out forwards;
+}
+
+@keyframes comboStartZoom {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  20% { 
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.2); /* Un poco más grande el pop inicial */
+  }
+  80% { 
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.0);
+  }
+  100% { 
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
 } 
