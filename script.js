@@ -32,9 +32,9 @@ let activePieceElement = null;
 let draggedPieceElement = null;
 let offsetX, offsetY;
 let lastClientX, lastClientY;
-const HORIZONTAL_DRAG_SENSITIVITY = 1.2;
+const HORIZONTAL_DRAG_SENSITIVITY = 1.0; // Reducido de 1.2 a 1.0 para una respuesta 1:1 inicial
 let currentShadowCells = [];
-const SHADOW_SNAP_THRESHOLD_CELLS = 1.5;
+const SHADOW_SNAP_THRESHOLD_CELLS = 1.8; // Aumentado de 1.5 a 1.8 para mayor permisividad táctil
 let highlightedPreCompleteCells = [];
 const PREVIEW_LINE_COLOR = 'rgba(144, 238, 144, 0.8)';
 const ANIMATION_DURATION = 500;
@@ -56,7 +56,7 @@ const COMBO_BASE_POINTS = { // Puntos base por línea, antes de combo (REINTRODU
 const COMBO_ACTIVATION_LINES_REQUIRED = 4; // Líneas para activar el combo
 const COMBO_ACTIVATION_WINDOW_MS = 10000;  // Ventana de tiempo para activar (10s)
 const COMBO_PROGRESSION_LINES_REQUIRED = 1; // Líneas para mantener/incrementar el combo
-const COMBO_PROGRESSION_WINDOW_MS = 5000;   // Ventana de tiempo para progresar (5s)
+const COMBO_PROGRESSION_WINDOW_MS = 7000;   // Ventana de tiempo para progresar (5s)
 const COMBO_MULTIPLIERS_NEW = [1, 2, 3, 4, 5]; // Multiplicadores: x1 (base), x2, x3, x4, x5
 const MAX_COMBO_LEVEL = COMBO_MULTIPLIERS_NEW.length - 1;
 
@@ -79,7 +79,7 @@ const MODE_DETAILS = {
     },
     combo: {
         title: "Modo Combo Infinito",
-        description: "Juega sin fin e intenta alcanzar la mayor puntuación. ¡Encadena eliminaciones de líneas rápidamente para activar multiplicadores de combo! Si limpias 5 líneas en menos de 10 segundos, tu puntuación se duplica (x2). Sigue así para alcanzar x3, x4, ¡y hasta x5! Si tardas más de 5 segundos en eliminar al menos 1 línea, el combo se reinicia."
+        description: "Juega sin fin e intenta alcanzar la mayor puntuación. ¡Encadena eliminaciones de líneas rápidamente para activar multiplicadores de combo! Si limpias 4 líneas en menos de 10 segundos, tu puntuación se duplica (x2). Sigue así para alcanzar x3, x4, ¡y hasta x5! Si tardas más de 7 segundos en eliminar al menos 1 línea, el combo se reinicia."
     }
 };
 

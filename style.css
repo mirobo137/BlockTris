@@ -11,6 +11,7 @@ body {
   justify-content: center; /* Centra verticalmente el contenido de la pantalla de inicio */
   min-height: 100vh; /* Asegura que el body ocupe al menos toda la altura de la ventana */
   overflow: hidden; /* Para evitar barras de scroll si el canvas se excede un poco */
+  touch-action: none; /* Prevenir acciones táctiles por defecto del navegador (scroll, zoom) */
 }
 
 #background-canvas {
@@ -308,7 +309,7 @@ body {
   position: absolute; 
   left: 50%; 
   transform: translateX(-50%);
-  top: 5px; /* Más abajo, justo encima o cerca del score. Ajustar según el layout del scoreContainer */
+  top: -50px; /* Ajustado para que aparezca un poco más arriba aún. Antes -30px */
   color: #FFD700; /* Dorado más intenso */
   font-size: 1.4em; 
   font-weight: bold;
