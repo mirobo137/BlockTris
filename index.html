@@ -6,6 +6,7 @@
   <title>BlockTris Deluxe</title>
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="levels_mode.css">
 </head>
 <body>
   <canvas id="background-canvas"></canvas>
@@ -26,6 +27,41 @@
         <button id="backToModeSelectionButton" class="secondary-action-button">Elegir Otro Modo</button>
       </div>
     </div>
+  </div>
+
+  <div id="level-selection-screen" class="hidden">
+    <h2>Elige un Nivel</h2>
+    <div id="levels-grid">
+      <div class="level-card" data-level-id="1">
+        <span class="level-number">1</span>
+        <div class="level-stars">
+          <span class="star"></span>
+          <span class="star"></span>
+          <span class="star"></span>
+        </div>
+        <span class="level-objective">Objetivo: 1000 Pts</span>
+      </div>
+      <div class="level-card locked" data-level-id="2">
+        <span class="level-number">2</span>
+        <div class="level-stars">
+          <span class="star"></span>
+          <span class="star"></span>
+          <span class="star"></span>
+        </div>
+        <span class="lock-icon">🔒</span>
+      </div>
+      <div class="level-card locked" data-level-id="3">
+        <span class="level-number">3</span>
+        <div class="level-stars">
+          <span class="star"></span>
+          <span class="star"></span>
+          <span class="star"></span>
+        </div>
+        <span class="lock-icon">🔒</span>
+      </div>
+      <!-- Añadir más niveles según sea necesario -->
+    </div>
+    <button id="backToModeSelectionFromLevelsButton" class="secondary-action-button">Volver a Modos</button>
   </div>
 
   <div id="game-area" class="hidden">
@@ -51,5 +87,6 @@
   </div>
 
   <script src="script.js"></script>
+  <script src="levels_mode.js"></script>
 </body>
 </html> 

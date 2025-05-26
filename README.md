@@ -86,7 +86,7 @@ El juego actualmente cuenta con un **Modo Combo Infinito** completamente funcion
 Este proyecto es una aplicación web estática (HTML, CSS, JavaScript). La forma más sencilla de verlo en tu navegador y que se actualice automáticamente con los cambios es usando una extensión de servidor en vivo.
 
 *   **Si usas VS Code o Cursor con la extensión "Live Server":**
-    1.  Abre el archivo `index.html`.
+    1.  Abre el archivo `index.html`. http-server -p 8000
     2.  Haz clic derecho dentro del editor y selecciona "Open with Live Server".
     3.  Esto abrirá el juego en tu navegador por defecto en una dirección como `http://127.0.0.1:5500/index.html`.
 

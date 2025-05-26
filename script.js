@@ -16,6 +16,7 @@ const finalScoreElement = document.getElementById('finalScore'); // Ya existía,
 const gameOverTitleElement = document.getElementById('gameOverTitle'); // Ya existía, asegurar que esté aquí
 const comboStartEffectElement = document.getElementById('combo-start-effect'); // Nuevo elemento para efecto Combo Start
 const comboStatusEffectElement = document.getElementById('combo-status-effect'); // Nuevo elemento
+const levelSelectionScreenElement = document.getElementById('level-selection-screen'); // <-- NUEVO
 
 // Botones
 const modeLevelsButton = document.getElementById('modeLevelsButton');
@@ -23,6 +24,7 @@ const modeComboButton = document.getElementById('modeComboButton');
 const playSelectedModeButtonElement = document.getElementById('playSelectedModeButton');
 const backToModeSelectionButtonElement = document.getElementById('backToModeSelectionButton');
 const restartGameButton = document.getElementById('restartGameButton'); // Del modal de Game Over
+const backToModeSelectionFromLevelsButton = document.getElementById('backToModeSelectionFromLevelsButton'); // <-- NUEVO
 
 // Estado del Juego (variables existentes)
 const board = [];
@@ -42,7 +44,7 @@ const FLOATING_SCORE_ANIMATION_DURATION = 1200;
 
 // Nuevas variables de estado para la gestión de pantallas y modos
 let currentGameMode = null; // 'levels' o 'combo' - para lógica interna del juego
-let currentScreen = 'mode-select'; // 'mode-select', 'mode-description', 'gameplay', 'game-over'
+let currentScreen = 'mode-select'; // 'mode-select', 'mode-description', 'gameplay', 'game-over', 'level-select'
 let selectedModeForDescription = null; // Almacena el modo mientras se muestra su descripción
 
 // --- NUEVA LÓGICA DE COMBOS ---
@@ -1149,6 +1151,24 @@ async function checkAndClearLines() {
              showFloatingScore(pointsEarned, cellElementsForParticles[0].element); // Mostrar desde la primera celda afectada
         }
 
+        // ---- VERIFICACIÓN DE VICTORIA DE NIVEL ----
+        if (currentGameMode === 'levels' && typeof currentSelectedLevelId !== 'undefined' && currentSelectedLevelId !== null) {
+            if (typeof levelsConfiguration !== 'undefined' && levelsConfiguration[currentSelectedLevelId]) {
+                const levelConfig = levelsConfiguration[currentSelectedLevelId];
+                if (levelConfig.targetScore && score >= levelConfig.targetScore) {
+                    if (typeof handleLevelWin === 'function') {
+                        handleLevelWin(levelConfig); // Función que estará en levels_mode.js
+                        return Promise.resolve(linesClearedThisTurnCount); // Terminar aquí, no chequear game over si se ganó
+                    } else {
+                        console.error("handleLevelWin no está definida.");
+                    }
+                }
+            } else {
+                console.error("levelsConfiguration o el nivel actual no están definidos.");
+            }
+        }
+        // ---- FIN VERIFICACIÓN DE VICTORIA DE NIVEL ----
+
         // ---- NUEVA LÓGICA DE LIMPIEZA CON PARTÍCULAS ----
         console.log("PARTICLE DEBUG: Entrando en la sección de creación de partículas y limpieza de DOM.");
         cellElementsForParticles.forEach(item => {
@@ -1356,7 +1376,13 @@ function boardIsEmpty() {
 // Event Listeners para selección de modo
 if (modeLevelsButton) {
     modeLevelsButton.addEventListener('click', () => {
-        navigateTo('mode-description', 'levels');
+        // navigateTo('mode-description', 'levels'); // Ir directamente a la selección de niveles
+        if (typeof showLevelSelectionScreen === 'function') {
+            showLevelSelectionScreen();
+        } else {
+            console.error("La función showLevelSelectionScreen no está definida. Asegúrate de que levels_mode.js se cargue correctamente.");
+            navigateTo('mode-select'); // Fallback por si acaso
+        }
     });
 }
 if (modeComboButton) {
@@ -1385,9 +1411,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    if (backToModeSelectionFromLevelsButton) { // <-- NUEVO
+        backToModeSelectionFromLevelsButton.addEventListener('click', () => {
+            navigateTo('mode-select');
+        });
+    }
+
     if (restartGameButton) { 
         restartGameButton.addEventListener('click', () => {
-            navigateTo('mode-select'); 
+            if (currentGameMode === 'levels') {
+                showLevelSelectionScreen(); // Ir a la selección de niveles
+            } else {
+                navigateTo('mode-select'); // Comportamiento original para otros modos
+            }
         });
     }
 
@@ -1410,6 +1446,7 @@ function updateScreenVisibility() {
     modeSelectionAreaElement.classList.add('hidden');
     modeDescriptionPanelElement.classList.add('hidden');
     gameArea.classList.add('hidden');
+    if (levelSelectionScreenElement) levelSelectionScreenElement.classList.add('hidden'); // <-- NUEVO
     
     // gameOverModal se maneja de forma un poco diferente debido a sus propias clases visible/hidden y animación
     // pero nos aseguramos que no esté 'visible' si no es la pantalla de game-over.
@@ -1434,6 +1471,10 @@ function updateScreenVisibility() {
         }
     } else if (currentScreen === 'gameplay') {
         gameArea.classList.remove('hidden');
+    } else if (currentScreen === 'level-select') { // <-- NUEVO
+        if (levelSelectionScreenElement) levelSelectionScreenElement.classList.remove('hidden');
+        startScreenElement.classList.add('hidden'); // Ocultar otras pantallas principales
+        gameArea.classList.add('hidden');
     } else if (currentScreen === 'game-over') {
         // La visualización de gameOverModal se maneja en handleGameOver() para la transición.
         // Aquí solo nos aseguramos que otras áreas principales estén ocultas.

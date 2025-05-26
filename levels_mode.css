@@ -1,0 +1,149 @@
+/* Archivo para los estilos específicos del Modo Niveles */
+
+#level-selection-screen {
+  width: 100%;
+  max-width: 900px; /* Para que no se extienda demasiado en pantallas grandes */
+  margin: 0 auto; /* Centrar */
+  padding: 20px;
+  box-sizing: border-box;
+  text-align: center;
+  /* background-color: rgba(0, 0, 0, 0.1); Opcional si queremos un fondo ligeramente diferente */
+  border-radius: 10px;
+}
+
+#level-selection-screen h2 {
+  font-size: 2.5em;
+  color: #FFEB3B; /* Amarillo */
+  text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+  margin-bottom: 30px;
+}
+
+#levels-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); /* Cuadrícula responsiva */
+  gap: 25px;
+  margin-bottom: 30px;
+}
+
+.level-card {
+  background: linear-gradient(to bottom right, #524079, #775a8a); /* Mismo degradado que modal */
+  border-radius: 12px;
+  padding: 20px;
+  color: #fff;
+  text-align: center;
+  box-shadow: 0 6px 15px rgba(0,0,0,0.3);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between; /* Para espaciar contenido interno */
+  min-height: 200px; /* Altura mínima para consistencia */
+}
+
+.level-card:not(.locked):hover {
+  transform: translateY(-5px) scale(1.03);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+}
+
+.level-number {
+  font-size: 2.8em;
+  font-weight: bold;
+  color: #FFEB3B;
+  margin-bottom: 10px;
+  line-height: 1;
+}
+
+.level-stars {
+  margin-bottom: 15px;
+  font-size: 1.8em; /* Tamaño de las estrellas */
+  line-height: 1;
+}
+
+.star {
+  display: inline-block; /* Para que se alineen */
+  color: #555; /* Color de estrella vacía (gris oscuro) */
+  margin: 0 2px;
+}
+
+.star.filled {
+  color: #FFD700; /* Color de estrella llena (dorado) */
+}
+
+/* Ejemplo de cómo se verían con pseudo-elementos */
+.star::before {
+  content: "\2606"; /* Estrella vacía (puedes usar \2605 para llena) */
+}
+
+.star.filled::before {
+  content: "\2605"; /* Estrella llena */
+}
+
+.level-objective {
+  font-size: 0.9em;
+  color: #e0e0e0;
+  margin-top: auto; /* Empuja el objetivo hacia abajo si hay espacio extra */
+}
+
+.level-card.locked {
+  background: linear-gradient(to bottom right, #4a4a4a, #616161); /* Fondo grisáceo para bloqueados */
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.lock-icon {
+  font-size: 3em;
+  color: rgba(255,255,255,0.5);
+  margin-top: 10px;
+}
+
+#backToModeSelectionFromLevelsButton {
+    margin-top: 20px; /* Espacio arriba del botón de volver */
+}
+
+/* Estilos para mostrar un objetivo de nivel dentro del game-area */
+#level-info-display {
+    position: absolute; /* Relativo al game-container si se inserta ahí, o game-area si se mueve */
+    top: -80px; /* Ajusta este valor para moverlo más arriba, fuera del game-container */
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.75); /* Un poco más oscuro para contraste */
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 1.1em; /* Un poco más grande */
+    z-index: 100; 
+    box-shadow: 0 3px 7px rgba(0,0,0,0.4);
+    width: auto; /* Ancho basado en contenido */
+    min-width: 280px; /* Ancho mínimo para que no se vea muy pequeño */
+    max-width: 90%; /* Para que no sea demasiado ancho en pantallas pequeñas */
+    text-align: center; /* Centrar texto interno */
+}
+
+#level-info-display p {
+    margin: 3px 0;
+}
+
+#level-info-display .info-label {
+    font-weight: bold;
+    color: #FFEB3B;
+}
+
+/* Por ejemplo:
+.level-objective-display {
+  padding: 10px;
+  background-color: rgba(0,0,0,0.2);
+  border-radius: 5px;
+  margin-bottom: 15px;
+}
+
+.level-objective-display h4 {
+  margin-top: 0;
+  color: #FFD700;
+}
+
+.frozen-cell {
+  background-image: url('path/to/ice_texture.png');
+  opacity: 0.7;
+}
+*/ 
