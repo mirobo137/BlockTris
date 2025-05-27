@@ -28,6 +28,366 @@ let levelInitializationContinuation = null; // Para la continuación después de
 let levelStartTime = 0; // Para niveles con criterio de tiempo
 let highlightedPreCompleteCells_levels = []; // Para previsualización de líneas
 
+// --- NUEVAS VARIABLES PARA SISTEMA DE CEMENTO ---
+let cementRainTimeoutId = null; // Para el temporizador de lluvia de cemento
+let cementAnimationCanvas = null; // Canvas para animación de caída
+let cementAnimationCtx = null; // Contexto del canvas de animación
+let fallingCementPieces = []; // Array de piezas de cemento cayendo
+let cementAnimationFrameId = null; // ID del frame de animación
+
+// --- NUEVAS VARIABLES PARA SISTEMA DE ANILLOS ---
+let ringsCollected = 0; // Contador de anillos recolectados
+let totalRingsInLevel = 0; // Total de anillos en el nivel actual
+let ringIdCounter = 0; // Contador para IDs únicos de anillos
+let collectedRingEffects = []; // Array para efectos de recolección
+let ringEffectAnimationId = null; // ID de animación de efectos de anillos
+
+// --- CLASE PARA PIEZAS DE CEMENTO CAYENDO ---
+class FallingCementPiece {
+    constructor(targetRow, targetCol) {
+        this.targetRow = targetRow;
+        this.targetCol = targetCol;
+        this.x = 0; // Se calculará basado en la posición del tablero
+        this.y = -100; // Empieza arriba de la pantalla
+        this.targetX = 0; // Posición final X
+        this.targetY = 0; // Posición final Y
+        this.speedY = 2; // Velocidad inicial de caída
+        this.acceleration = 0.3; // Aceleración de la gravedad
+        this.rotation = 0; // Rotación de la pieza
+        this.rotationSpeed = (Math.random() - 0.5) * 0.2; // Velocidad de rotación aleatoria
+        this.size = CELL_SIZE; // Tamaño de la pieza
+        this.shadowOpacity = 0; // Opacidad de la sombra
+        this.impacted = false; // Si ya impactó
+        this.impactParticles = []; // Partículas del impacto
+        
+        this.calculateTargetPosition();
+    }
+    
+    calculateTargetPosition() {
+        if (!boardElement) return;
+        const boardRect = boardElement.getBoundingClientRect();
+        this.targetX = boardRect.left + (this.targetCol * (CELL_SIZE + GAP_SIZE)) + (CELL_SIZE / 2);
+        this.targetY = boardRect.top + (this.targetRow * (CELL_SIZE + GAP_SIZE)) + (CELL_SIZE / 2);
+        this.x = this.targetX + (Math.random() - 0.5) * 100; // Pequeña variación horizontal inicial
+    }
+    
+    update() {
+        if (this.impacted) {
+            // Actualizar partículas de impacto
+            for (let i = this.impactParticles.length - 1; i >= 0; i--) {
+                const particle = this.impactParticles[i];
+                particle.update();
+                if (particle.life <= 0) {
+                    this.impactParticles.splice(i, 1);
+                }
+            }
+            return this.impactParticles.length === 0; // Retorna true si terminó la animación
+        }
+        
+        // Actualizar posición
+        this.speedY += this.acceleration;
+        this.y += this.speedY;
+        this.rotation += this.rotationSpeed;
+        
+        // Calcular sombra basada en la altura
+        const distanceToTarget = Math.max(0, this.targetY - this.y);
+        this.shadowOpacity = Math.max(0, 1 - (distanceToTarget / 300));
+        
+        // Verificar si llegó al objetivo
+        if (this.y >= this.targetY) {
+            this.impact();
+            return false;
+        }
+        
+        return false;
+    }
+    
+    impact() {
+        this.impacted = true;
+        this.y = this.targetY;
+        
+        // Crear partículas de impacto
+        for (let i = 0; i < 15; i++) {
+            this.impactParticles.push({
+                x: this.x,
+                y: this.y,
+                speedX: (Math.random() - 0.5) * 8,
+                speedY: (Math.random() - 0.5) * 8 - 2,
+                life: Math.random() * 30 + 20,
+                maxLife: Math.random() * 30 + 20,
+                size: Math.random() * 3 + 1,
+                update() {
+                    this.life--;
+                    this.x += this.speedX;
+                    this.y += this.speedY;
+                    this.speedY += 0.2; // Gravedad
+                    this.speedX *= 0.98; // Fricción
+                }
+            });
+        }
+        
+        // Colocar la pieza de cemento en el tablero
+        this.placeCementBlock();
+        
+        // Efecto de temblor de pantalla
+        this.createScreenShake();
+    }
+    
+    placeCementBlock() {
+        if (board[this.targetRow] && typeof board[this.targetRow][this.targetCol] !== 'undefined') {
+            // Marcar como cemento en el tablero lógico
+            board[this.targetRow][this.targetCol] = 3; // 3 = cemento
+            
+            // Actualizar visualmente la celda
+            const cellElement = boardElement.querySelector(`[data-row='${this.targetRow}'][data-col='${this.targetCol}']`);
+            if (cellElement) {
+                // Limpiar estilos anteriores
+                cellElement.classList.remove('piece-block', 'frozen-cell', 'frozen-stage-2', 'frozen-stage-1');
+                cellElement.style.backgroundColor = '';
+                delete cellElement.dataset.pieceColor;
+                delete cellElement.dataset.frozenId;
+                delete cellElement.dataset.frozenStage;
+                
+                // Aplicar estilo de cemento
+                cellElement.classList.add('cement-block');
+                cellElement.dataset.cementBlock = 'true';
+                
+                // Animación de aparición
+                cellElement.classList.add('cement-impact-animation');
+                setTimeout(() => {
+                    cellElement.classList.remove('cement-impact-animation');
+                }, 500);
+            }
+        }
+    }
+    
+    createScreenShake() {
+        if (gameContainerElement) {
+            gameContainerElement.classList.add('screen-shake');
+            setTimeout(() => {
+                gameContainerElement.classList.remove('screen-shake');
+            }, 300);
+        }
+    }
+    
+    draw() {
+        if (!cementAnimationCtx) return;
+        
+        cementAnimationCtx.save();
+        
+        // Dibujar sombra en el suelo
+        if (this.shadowOpacity > 0) {
+            cementAnimationCtx.globalAlpha = this.shadowOpacity * 0.5;
+            cementAnimationCtx.fillStyle = '#000000';
+            cementAnimationCtx.beginPath();
+            cementAnimationCtx.ellipse(this.targetX, this.targetY + 5, this.size * 0.6, this.size * 0.3, 0, 0, Math.PI * 2);
+            cementAnimationCtx.fill();
+        }
+        
+        // Dibujar la pieza cayendo
+        cementAnimationCtx.globalAlpha = 1;
+        cementAnimationCtx.translate(this.x, this.y);
+        cementAnimationCtx.rotate(this.rotation);
+        
+        // Estilo de cemento con textura (más claro y visible)
+        cementAnimationCtx.fillStyle = '#A0A0A0'; // Gris claro
+        cementAnimationCtx.strokeStyle = '#5A5A5A'; // Borde gris medio
+        cementAnimationCtx.lineWidth = 2;
+        
+        // Dibujar el bloque principal
+        cementAnimationCtx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+        cementAnimationCtx.strokeRect(-this.size/2, -this.size/2, this.size, this.size);
+        
+        // Añadir gradiente interno para efecto 3D
+        const gradient = cementAnimationCtx.createLinearGradient(-this.size/2, -this.size/2, this.size/2, this.size/2);
+        gradient.addColorStop(0, '#B8B8B8'); // Más claro arriba-izquierda
+        gradient.addColorStop(0.5, '#A0A0A0'); // Color medio
+        gradient.addColorStop(1, '#707070'); // Más oscuro abajo-derecha
+        cementAnimationCtx.fillStyle = gradient;
+        cementAnimationCtx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+        
+        // Añadir textura de cemento con puntos más visibles
+        cementAnimationCtx.fillStyle = '#FFFFFF'; // Puntos blancos para textura
+        for (let i = 0; i < 4; i++) {
+            for (let j = 0; j < 4; j++) {
+                if (Math.random() > 0.6) {
+                    cementAnimationCtx.globalAlpha = 0.6;
+                    cementAnimationCtx.fillRect(
+                        -this.size/2 + (i * this.size/4) + Math.random() * 3,
+                        -this.size/2 + (j * this.size/4) + Math.random() * 3,
+                        2, 2
+                    );
+                }
+            }
+        }
+        
+        // Añadir algunos puntos oscuros para contraste
+        cementAnimationCtx.fillStyle = '#404040';
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                if (Math.random() > 0.8) {
+                    cementAnimationCtx.globalAlpha = 0.4;
+                    cementAnimationCtx.fillRect(
+                        -this.size/2 + (i * this.size/3) + Math.random() * 4,
+                        -this.size/2 + (j * this.size/3) + Math.random() * 4,
+                        1, 1
+                    );
+                }
+            }
+        }
+        
+        cementAnimationCtx.globalAlpha = 1; // Restaurar opacidad
+        
+        cementAnimationCtx.restore();
+        
+        // Dibujar partículas de impacto
+        if (this.impacted) {
+            this.impactParticles.forEach(particle => {
+                cementAnimationCtx.save();
+                cementAnimationCtx.globalAlpha = particle.life / particle.maxLife;
+                cementAnimationCtx.fillStyle = '#C0C0C0'; // Color gris claro para las partículas
+                cementAnimationCtx.beginPath();
+                cementAnimationCtx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                cementAnimationCtx.fill();
+                
+                // Añadir un pequeño borde más oscuro para definición
+                cementAnimationCtx.strokeStyle = '#808080';
+                cementAnimationCtx.lineWidth = 0.5;
+                cementAnimationCtx.stroke();
+                cementAnimationCtx.restore();
+            });
+        }
+    }
+}
+
+// --- FUNCIONES DEL SISTEMA DE CEMENTO ---
+function setupCementAnimationCanvas() {
+    // Crear el canvas si no existe
+    if (!cementAnimationCanvas) {
+        cementAnimationCanvas = document.createElement('canvas');
+        cementAnimationCanvas.id = 'cement-animation-canvas';
+        
+        // Insertarlo en el game-container
+        if (gameContainerElement) {
+            gameContainerElement.appendChild(cementAnimationCanvas);
+        } else {
+            document.body.appendChild(cementAnimationCanvas);
+        }
+        
+        cementAnimationCtx = cementAnimationCanvas.getContext('2d');
+    }
+    
+    // Configurar tamaño del canvas
+    if (boardElement && gameContainerElement) {
+        const containerRect = gameContainerElement.getBoundingClientRect();
+        cementAnimationCanvas.width = containerRect.width;
+        cementAnimationCanvas.height = containerRect.height;
+        
+        // Posicionar el canvas
+        cementAnimationCanvas.style.position = 'absolute';
+        cementAnimationCanvas.style.top = '0';
+        cementAnimationCanvas.style.left = '0';
+        cementAnimationCanvas.style.pointerEvents = 'none';
+        cementAnimationCanvas.style.zIndex = '1500';
+    }
+}
+
+function startCementRain(levelConfig) {
+    if (!levelConfig.cementRainInterval) return;
+    
+    console.log("Iniciando lluvia de cemento cada", levelConfig.cementRainInterval / 1000, "segundos");
+    
+    // Configurar el canvas de animación
+    setupCementAnimationCanvas();
+    
+    // Función para hacer caer una pieza de cemento
+    const dropCementPiece = () => {
+        // Elegir posición aleatoria
+        const randomRow = Math.floor(Math.random() * 10);
+        const randomCol = Math.floor(Math.random() * 10);
+        
+        console.log(`Cayendo pieza de cemento en posición [${randomRow}, ${randomCol}]`);
+        
+        // Crear la pieza cayendo
+        const fallingPiece = new FallingCementPiece(randomRow, randomCol);
+        fallingCementPieces.push(fallingPiece);
+        
+        // Iniciar animación si no está corriendo
+        if (!cementAnimationFrameId) {
+            animateFallingCement();
+        }
+        
+        // Programar la siguiente caída
+        if (currentSelectedLevelId === 3 && currentGameMode === 'levels') {
+            cementRainTimeoutId = setTimeout(dropCementPiece, levelConfig.cementRainInterval);
+        }
+    };
+    
+    // Iniciar la primera caída después de 5 segundos
+    cementRainTimeoutId = setTimeout(dropCementPiece, 5000);
+}
+
+function animateFallingCement() {
+    if (!cementAnimationCtx || !cementAnimationCanvas) return;
+    
+    // Limpiar canvas
+    cementAnimationCtx.clearRect(0, 0, cementAnimationCanvas.width, cementAnimationCanvas.height);
+    
+    // Actualizar y dibujar todas las piezas cayendo
+    for (let i = fallingCementPieces.length - 1; i >= 0; i--) {
+        const piece = fallingCementPieces[i];
+        const finished = piece.update();
+        piece.draw();
+        
+        // Remover piezas que terminaron su animación
+        if (finished) {
+            fallingCementPieces.splice(i, 1);
+        }
+    }
+    
+    // Continuar animación si hay piezas
+    if (fallingCementPieces.length > 0) {
+        cementAnimationFrameId = requestAnimationFrame(animateFallingCement);
+    } else {
+        cementAnimationFrameId = null;
+    }
+}
+
+function stopCementRain() {
+    // Detener el temporizador
+    if (cementRainTimeoutId) {
+        clearTimeout(cementRainTimeoutId);
+        cementRainTimeoutId = null;
+    }
+    
+    // Detener animación
+    if (cementAnimationFrameId) {
+        cancelAnimationFrame(cementAnimationFrameId);
+        cementAnimationFrameId = null;
+    }
+    
+    // Limpiar piezas cayendo
+    fallingCementPieces = [];
+    
+    // Limpiar canvas
+    if (cementAnimationCtx && cementAnimationCanvas) {
+        cementAnimationCtx.clearRect(0, 0, cementAnimationCanvas.width, cementAnimationCanvas.height);
+    }
+    
+    console.log("Lluvia de cemento detenida");
+}
+
+function cleanupCementSystem() {
+    stopCementRain();
+    
+    // Remover canvas si existe
+    if (cementAnimationCanvas && cementAnimationCanvas.parentNode) {
+        cementAnimationCanvas.parentNode.removeChild(cementAnimationCanvas);
+        cementAnimationCanvas = null;
+        cementAnimationCtx = null;
+    }
+}
+
 // Definición de Niveles (ejemplo)
 const levelsConfiguration = {
     1: { 
@@ -46,24 +406,36 @@ const levelsConfiguration = {
         name: "Nivel 2 - Deshielo", 
         objectiveText: "Destruye 3 bloques de hielo.", 
         locked: false, // Desbloqueado para probar
-        maxMoves: 25, 
+        maxMoves: 30, // Aumentado de 25 a 30 movimientos
         targetFrozenPiecesToClear: 3,
         initialFrozenPieces: [
-            { row: 2, col: 2, initialStage: 3, id: "frozen_1" },
-            { row: 4, col: 5, initialStage: 3, id: "frozen_2" },
-            { row: 7, col: 7, initialStage: 3, id: "frozen_3" },
+            { row: 2, col: 2, initialStage: 2, id: "frozen_1" }, // Cambiado de stage 3 a 2
+            { row: 4, col: 5, initialStage: 2, id: "frozen_2" }, // Cambiado de stage 3 a 2
+            { row: 7, col: 7, initialStage: 2, id: "frozen_3" }, // Cambiado de stage 3 a 2
         ],
         starCriteria: 'movesRemaining',
-        starsThresholds: { threeStars: 5, twoStars: 2 } // 3 estrellas >= 5 mov. restantes, 2 estrellas >= 2 mov. restantes, 1 estrella >= 0 mov. restantes
+        starsThresholds: { threeStars: 8, twoStars: 4 } // Ajustado: 3 estrellas >= 8 mov. restantes, 2 estrellas >= 4 mov. restantes
     },
     3: { 
         id: 3, 
-        name: "Nivel 3", 
-        objectiveText: "Próximamente...", 
-        targetScore: 3000, 
-        locked: true,
-        starCriteria: null, // Sin definir aún
-        starsThresholds: {}
+        name: "Nivel 3 - Lluvia de Cemento", 
+        objectiveText: "Alcanza 1000 puntos mientras llueven bloques de cemento cada 25 segundos.", 
+        targetScore: 1000, 
+        locked: false, // Desbloqueado para probar
+        maxTimeSeconds: null, // Sin límite de tiempo específico
+        cementRainInterval: 25000, // 25 segundos en milisegundos
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 120, twoStars: 180 } // 3 estrellas <= 2min, 2 estrellas <= 3min
+    },
+    4: { 
+        id: 4, 
+        name: "Nivel 4 - Cazador de Anillos", 
+        objectiveText: "Recolecta 10 anillos dorados colocando las piezas que los contienen.", 
+        targetRingsToCollect: 10,
+        maxMoves: 30,
+        locked: false, // Desbloqueado para probar
+        starCriteria: 'movesRemaining',
+        starsThresholds: { threeStars: 8, twoStars: 4 } // 3 estrellas >= 8 mov. restantes, 2 estrellas >= 4 mov. restantes
     },
     // ... más niveles
 };
@@ -95,12 +467,18 @@ function generateSinglePieceElement_levels() {
   pieceDiv.dataset.pieceName = randomPieceTypeName; 
   pieceDiv.pieceMatrix = pieceMatrix;
   pieceDiv.pieceColor = pieceColor;
+  
+  // Asegurar que la pieza sea interactiva
+  pieceDiv.style.cursor = 'grab';
+  pieceDiv.style.userSelect = 'none';
+  pieceDiv.style.touchAction = 'none'; // Importante para eventos táctiles
 
   pieceMatrix.forEach(row => {
     row.forEach(cellValue => {
       const cellDiv = document.createElement('div');
       cellDiv.style.width = `${pieceInListCellSize}px`; 
       cellDiv.style.height = `${pieceInListCellSize}px`;
+      cellDiv.style.pointerEvents = 'none'; // Las celdas no deben interceptar eventos
       if (cellValue === 1) {
         cellDiv.style.backgroundColor = pieceColor;
         cellDiv.classList.add('piece-block');
@@ -110,8 +488,20 @@ function generateSinglePieceElement_levels() {
       pieceDiv.appendChild(cellDiv);
     });
   });
-  pieceDiv.addEventListener('mousedown', (e) => startDrag_levels(e, randomPieceTypeName, pieceMatrix, pieceDiv));
-  pieceDiv.addEventListener('touchstart', (e) => startDrag_levels(e, randomPieceTypeName, pieceMatrix, pieceDiv), { passive: false });
+  
+  // Función de manejo de eventos mejorada
+  const handleDragStart = (e) => {
+    console.log("DEBUG: Evento de arrastre detectado en pieza:", randomPieceTypeName);
+    startDrag_levels(e, randomPieceTypeName, pieceMatrix, pieceDiv);
+  };
+  
+  // Registrar eventos con opciones específicas
+  pieceDiv.addEventListener('mousedown', handleDragStart, { passive: false });
+  pieceDiv.addEventListener('touchstart', handleDragStart, { passive: false });
+  
+  // Prevenir comportamientos por defecto que puedan interferir
+  pieceDiv.addEventListener('dragstart', (e) => e.preventDefault());
+  pieceDiv.addEventListener('selectstart', (e) => e.preventDefault());
   
   setTimeout(() => {
     pieceDiv.classList.remove('new-piece-appear-animation');
@@ -128,6 +518,12 @@ function displayPieces_levels() {
   piecesElement.innerHTML = ''; 
   for (let i = 0; i < 3; i++) {
     const newPieceElement = generateSinglePieceElement_levels();
+    
+    // Añadir anillo si es el Nivel 4
+    if (currentSelectedLevelId === 4) {
+        addRingToPiece(newPieceElement);
+    }
+    
     piecesElement.appendChild(newPieceElement);
   }
 }
@@ -135,6 +531,10 @@ function displayPieces_levels() {
 function startDrag_levels(event, pieceName, pieceMatrix, originalElement) {
   if (draggedPieceElement_levels) return;
   event.preventDefault();
+  event.stopPropagation(); // Evitar propagación de eventos
+  
+  console.log("DEBUG: startDrag_levels iniciado para pieza:", pieceName);
+  
   const eventClientX = event.clientX || event.touches[0].clientX;
   const eventClientY = event.clientY || event.touches[0].clientY;
   lastClientX_levels = eventClientX;
@@ -142,21 +542,44 @@ function startDrag_levels(event, pieceName, pieceMatrix, originalElement) {
   const pieceColor = originalElement.pieceColor;
   selectedPiece_levels = { name: pieceName, matrix: pieceMatrix, color: pieceColor };
   activePieceElement_levels = originalElement;
+  
+  // Clonar la pieza pero limpiar elementos problemáticos
   draggedPieceElement_levels = activePieceElement_levels.cloneNode(true);
+  
+  // Limpiar anillos del elemento clonado para evitar conflictos
+  const clonedRings = draggedPieceElement_levels.querySelectorAll('.golden-ring');
+  clonedRings.forEach(ring => ring.remove());
+  
+  // Limpiar datos de anillo del elemento clonado
+  if (draggedPieceElement_levels.ringData) {
+    delete draggedPieceElement_levels.ringData;
+  }
+  
   draggedPieceElement_levels.classList.remove('available-piece-glow');
+  draggedPieceElement_levels.classList.remove('piece-with-ring'); // Remover clase de anillo
   draggedPieceElement_levels.pieceColor = pieceColor; 
   draggedPieceElement_levels.classList.add('dragging'); 
+  
+  // Asegurar que el elemento arrastrado tenga los estilos correctos
+  draggedPieceElement_levels.style.position = 'fixed';
+  draggedPieceElement_levels.style.zIndex = '9999';
+  draggedPieceElement_levels.style.pointerEvents = 'none'; // Evitar interferencia con eventos
+  
   document.body.appendChild(draggedPieceElement_levels);
+  
   const draggedRect = draggedPieceElement_levels.getBoundingClientRect();
   offsetX_levels = draggedRect.width / 2;
   offsetY_levels = draggedRect.height * 2; 
   draggedPieceElement_levels.style.left = `${eventClientX - offsetX_levels}px`;
   draggedPieceElement_levels.style.top = `${eventClientY - offsetY_levels}px`;
   activePieceElement_levels.classList.add('hidden-original'); 
+  
   const initialDraggedRect = draggedPieceElement_levels.getBoundingClientRect();
   const initialPieceCenterX = initialDraggedRect.left + initialDraggedRect.width / 2;
   const initialPieceCenterY = initialDraggedRect.top + initialDraggedRect.height / 2;
   updatePieceShadow_levels(initialPieceCenterX, initialPieceCenterY); 
+  
+  console.log("DEBUG: Event listeners añadidos para arrastre");
   document.addEventListener('mousemove', dragMove_levels);
   document.addEventListener('touchmove', dragMove_levels, { passive: false });
   document.addEventListener('mouseup', dragEnd_levels);
@@ -193,11 +616,12 @@ function checkPotentialLines_levels(tempBoard, piecePos, pieceMatrix) {
     const numRows = tempBoard.length;
     const numCols = tempBoard[0].length;
 
-    // Verificar filas completas
+    // Verificar filas completas (cemento NO cuenta para completar líneas)
     for (let r = 0; r < numRows; r++) {
         let rowIsFull = true;
         for (let c = 0; c < numCols; c++) {
-            if (tempBoard[r][c] === 0) { // Si alguna celda está vacía
+            // Una línea está completa solo si tiene piezas normales (1) o congeladas (2), NO cemento (3)
+            if (tempBoard[r][c] === 0 || tempBoard[r][c] === 3) { 
                 rowIsFull = false;
                 break;
             }
@@ -207,11 +631,12 @@ function checkPotentialLines_levels(tempBoard, piecePos, pieceMatrix) {
         }
     }
 
-    // Verificar columnas completas
+    // Verificar columnas completas (cemento NO cuenta para completar líneas)
     for (let c = 0; c < numCols; c++) {
         let colIsFull = true;
         for (let r = 0; r < numRows; r++) {
-            if (tempBoard[r][c] === 0) { // Si alguna celda está vacía
+            // Una línea está completa solo si tiene piezas normales (1) o congeladas (2), NO cemento (3)
+            if (tempBoard[r][c] === 0 || tempBoard[r][c] === 3) { 
                 colIsFull = false;
                 break;
             }
@@ -373,8 +798,8 @@ async function dragEnd_levels(event) {
         const c_cell = parseInt(cell.dataset.col);
         if (board[r_cell][c_cell] === 0) { 
             cell.style.backgroundColor = ''; 
-        } else if (board[r_cell][c_cell] === 1) {
-            cell.style.backgroundColor = cell.dataset.pieceColor || ''; 
+        } else if (board[r_cell][c_cell] === 1 && cell.dataset.pieceColor) {
+            cell.style.backgroundColor = cell.dataset.pieceColor;
         } 
     });
     currentShadowCells_levels = [];
@@ -410,13 +835,26 @@ async function dragEnd_levels(event) {
         }
         const placeThresholdPixels = SHADOW_SNAP_THRESHOLD_CELLS * (CELL_SIZE + GAP_SIZE); 
         if (bestPlacePos && Math.sqrt(minDistanceSqForPlacement) < placeThresholdPixels * pieceMatrix_dragEnd[0].length) {
+            // Colocar la pieza en el tablero
             placePiece_levels(selectedPiece_levels.matrix, bestPlacePos.row, bestPlacePos.col, selectedPiece_levels.color);
+            
+            // Colocar anillo en el tablero si la pieza tenía uno (Nivel 4)
+            if (currentSelectedLevelId === 4 && activePieceElement_levels && activePieceElement_levels.ringData) {
+                placeRingsOnBoard(selectedPiece_levels.matrix, bestPlacePos.row, bestPlacePos.col, activePieceElement_levels.ringData);
+            }
+            
             if (activePieceElement_levels) activePieceElement_levels.remove(); 
             placed = true;
             await checkAndClearLines_levels(); 
 
             // Corrected piece replenishment: generate and append only one new piece
             const newSinglePiece_levels = generateSinglePieceElement_levels();
+            
+            // Añadir anillo a la nueva pieza si es el Nivel 4
+            if (currentSelectedLevelId === 4) {
+                addRingToPiece(newSinglePiece_levels);
+            }
+            
             if (piecesElement) {
                 piecesElement.appendChild(newSinglePiece_levels);
             } else {
@@ -450,7 +888,8 @@ function canPlacePiece_levels(pieceMatrix, startRow, startCol) {
                 if (boardR >= 10 || boardC >= 10 || boardR < 0 || boardC < 0) {
                     return false; 
                 }
-                if (board[boardR][boardC] === 1 || board[boardR][boardC] === 2) { 
+                // Ahora también verificamos cemento (estado 3)
+                if (board[boardR][boardC] === 1 || board[boardR][boardC] === 2 || board[boardR][boardC] === 3) { 
                     return false; 
                 }
             }
@@ -469,7 +908,7 @@ function placePiece_levels(pieceMatrix, startRow, startCol, pieceColorForBoard) 
                     board[boardR][boardC] = 1; 
                     const cellToUpdate = boardElement.querySelector(`[data-row='${boardR}'][data-col='${boardC}']`);
                     if (cellToUpdate) {
-                        cellToUpdate.classList.remove('frozen-cell', 'frozen-stage-3', 'frozen-stage-2', 'frozen-stage-1');
+                        cellToUpdate.classList.remove('frozen-cell', 'frozen-stage-2', 'frozen-stage-1');
                         delete cellToUpdate.dataset.frozenId;
                         delete cellToUpdate.dataset.frozenStage;
                         cellToUpdate.style.backgroundColor = pieceColorForBoard;
@@ -496,6 +935,68 @@ function placePiece_levels(pieceMatrix, startRow, startCol, pieceColorForBoard) 
     }
 }
 
+// Nueva función para colocar anillos en el tablero
+function placeRingsOnBoard(pieceMatrix, startRow, startCol, ringData) {
+    if (!ringData || !ringData.hasRing) return;
+    
+    const ringPosition = ringData.ringPosition;
+    const boardR = startRow + ringPosition.row;
+    const boardC = startCol + ringPosition.col;
+    
+    // Verificar que la posición esté dentro del tablero
+    if (boardR >= 0 && boardR < 10 && boardC >= 0 && boardC < 10) {
+        const cellElement = boardElement.querySelector(`[data-row='${boardR}'][data-col='${boardC}']`);
+        if (cellElement) {
+            // Marcar la celda como conteniendo un anillo
+            cellElement.dataset.hasRing = 'true';
+            cellElement.dataset.ringId = ringData.ringId;
+            
+            // Añadir clase CSS para centrado
+            cellElement.classList.add('cell-with-ring');
+            
+            // Crear el anillo visual en la celda del tablero
+            createBoardRingElement(cellElement, ringData.ringId);
+            
+            console.log(`Anillo ${ringData.ringId} colocado en tablero en posición [${boardR}, ${boardC}]`);
+        }
+    }
+}
+
+// Nueva función para crear anillos en las celdas del tablero
+function createBoardRingElement(cellElement, ringId) {
+    // Verificar que no haya ya un anillo en esta celda
+    const existingRing = cellElement.querySelector('.board-golden-ring');
+    if (existingRing) {
+        existingRing.remove();
+    }
+    
+    const ringElement = document.createElement('div');
+    ringElement.className = 'board-golden-ring';
+    ringElement.id = `board_${ringId}`;
+    
+    // Estilos para el anillo en el tablero - CENTRADO PERFECTO
+    ringElement.style.position = 'absolute';
+    ringElement.style.top = '50%';
+    ringElement.style.left = '50%';
+    ringElement.style.transform = 'translate(-50%, -50%)';
+    ringElement.style.width = '18px';
+    ringElement.style.height = '18px';
+    ringElement.style.pointerEvents = 'none';
+    ringElement.style.zIndex = '1001';
+    ringElement.style.margin = '0'; // Asegurar que no hay márgenes
+    ringElement.style.padding = '0'; // Asegurar que no hay padding
+    
+    // Asegurar que la celda tenga posición relativa y esté preparada para el centrado
+    cellElement.style.position = 'relative';
+    cellElement.style.display = 'flex'; // Usar flexbox como respaldo
+    cellElement.style.alignItems = 'center';
+    cellElement.style.justifyContent = 'center';
+    
+    cellElement.appendChild(ringElement);
+    
+    console.log(`DEBUG: Anillo ${ringId} creado en tablero con centrado perfecto`);
+}
+
 async function checkAndClearLines_levels() {
     console.log("--- checkAndClearLines_levels INICIO ---");
     const levelConfig = levelsConfiguration[currentSelectedLevelId];
@@ -512,7 +1013,8 @@ async function checkAndClearLines_levels() {
     for (let r = 0; r < numRows; r++) {
         let rowIsFull = true;
         for (let c_idx = 0; c_idx < numCols; c_idx++) {
-            if (board[r][c_idx] === 0) { 
+            // Una fila está completa solo si NO tiene celdas vacías (0) ni cemento (3)
+            if (board[r][c_idx] === 0 || board[r][c_idx] === 3) { 
                 rowIsFull = false; break;
             }
         }
@@ -520,14 +1022,18 @@ async function checkAndClearLines_levels() {
             linesClearedThisTurnCount++;
             for (let c_idx = 0; c_idx < numCols; c_idx++) {
                 const cellElement = boardElement.children[r * numCols + c_idx];
-                cellsToClearLogically.add({row: r, col: c_idx, element: cellElement, isFrozen: board[r][c_idx] === 2});
+                // Solo añadir celdas que NO sean cemento
+                if (board[r][c_idx] !== 3) {
+                    cellsToClearLogically.add({row: r, col: c_idx, element: cellElement, isFrozen: board[r][c_idx] === 2});
+                }
             }
         }
     }
     for (let c = 0; c < numCols; c++) {
         let colIsFull = true;
         for (let r_idx = 0; r_idx < numRows; r_idx++) {
-            if (board[r_idx][c] === 0) {
+            // Una columna está completa solo si NO tiene celdas vacías (0) ni cemento (3)
+            if (board[r_idx][c] === 0 || board[r_idx][c] === 3) {
                 colIsFull = false; break;
             }
         }
@@ -539,7 +1045,8 @@ async function checkAndClearLines_levels() {
                 cellsToClearLogically.forEach(item => {
                     if (item.element === cellElement) alreadyInSet = true;
                 });
-                if (!alreadyInSet) {
+                // Solo añadir celdas que NO sean cemento
+                if (!alreadyInSet && board[r_idx][c] !== 3) {
                     cellsToClearLogically.add({row: r_idx, col: c, element: cellElement, isFrozen: board[r_idx][c] === 2});
                 }
             }
@@ -567,6 +1074,49 @@ async function checkAndClearLines_levels() {
                 if (board[row][col] === 1) { // Ensure it's a normal piece block
                     const originalColorForParticles = cellElement.dataset.pieceColor || cellElement.style.backgroundColor; // Get color for particles first
 
+                    // Verificar si esta celda tiene un anillo y recolectarlo
+                    if (cellElement.dataset.hasRing === 'true') {
+                        const ringId = cellElement.dataset.ringId;
+                        console.log(`Recolectando anillo ${ringId} de celda [${row}, ${col}] por línea completada`);
+                        
+                        // Crear efecto de recolección
+                        const ringElement = cellElement.querySelector('.board-golden-ring');
+                        if (ringElement) {
+                            const ringRect = ringElement.getBoundingClientRect();
+                            const centerX = ringRect.left + ringRect.width / 2;
+                            const centerY = ringRect.top + ringRect.height / 2;
+                            
+                            const effect = new CollectedRingEffect(centerX, centerY);
+                            collectedRingEffects.push(effect);
+                            
+                            if (!ringEffectAnimationId) {
+                                animateRingEffects();
+                            }
+                            
+                            // Animar recolección
+                            ringElement.classList.add('ring-collected');
+                            setTimeout(() => {
+                                if (ringElement.parentNode) {
+                                    ringElement.parentNode.removeChild(ringElement);
+                                }
+                            }, 600);
+                        }
+                        
+                        // Actualizar contador
+                        ringsCollected++;
+                        updateRingsDisplay();
+                        
+                        // Limpiar datos del anillo
+                        delete cellElement.dataset.hasRing;
+                        delete cellElement.dataset.ringId;
+                        cellElement.classList.remove('cell-with-ring'); // Limpiar clase CSS
+                        
+                        // Puntos por anillo
+                        pointsEarnedThisTurn += 50;
+                        
+                        console.log(`Anillo recolectado! Total: ${ringsCollected}`);
+                    }
+
                     board[row][col] = 0; // Logical clear - cell is now empty
 
                     // --- Explicitly clear visual appearance of the normal cell ---
@@ -589,7 +1139,7 @@ async function checkAndClearLines_levels() {
         });
         damagedFrozenCellsThisTurn.forEach(dfc => {
             const { element, frozenPiece } = dfc;
-            element.classList.remove('frozen-stage-3', 'frozen-stage-2', 'frozen-stage-1');
+            element.classList.remove('frozen-stage-2', 'frozen-stage-1');
             delete element.dataset.frozenStage; 
             if (frozenPiece.currentStage > 0) {
                 element.classList.add(`frozen-stage-${frozenPiece.currentStage}`);
@@ -634,6 +1184,10 @@ async function checkAndClearLines_levels() {
             if (finalClearedCount >= levelConfig.targetFrozenPiecesToClear) {
                 objectivesReallyMet = true;
             }
+        } else if (levelConfig.targetRingsToCollect) { // Para el Nivel 4
+            if (ringsCollected >= levelConfig.targetRingsToCollect) {
+                objectivesReallyMet = true;
+            }
         }
         // Añadir aquí otras condiciones de victoria para futuros tipos de niveles
 
@@ -649,6 +1203,13 @@ async function checkAndClearLines_levels() {
 
 function handleGameOver_levels(reason = "¡Nivel Fallido!") {
     console.log("Handling Game Over for Levels. Reason:", reason);
+    
+    // Limpiar sistema de cemento
+    cleanupCementSystem();
+    
+    // Limpiar sistema de anillos
+    cleanupRingEffects();
+    
     if (draggedPieceElement_levels && draggedPieceElement_levels.parentNode === document.body) {
         document.body.removeChild(draggedPieceElement_levels);
         if (activePieceElement_levels) activePieceElement_levels.classList.remove('hidden-original');
@@ -704,7 +1265,9 @@ function handleGameOver_levels(reason = "¡Nivel Fallido!") {
 function boardIsEmpty_levels() { 
     for (let r = 0; r < 10; r++) {
         for (let c = 0; c < 10; c++) {
+            // Considerar cemento como "no vacío" pero no cuenta para game over
             if (board[r][c] === 1 || board[r][c] === 2) return false;
+            // El cemento (3) no cuenta como "vacío" pero tampoco impide el juego
         }
     }
     return true;
@@ -863,6 +1426,12 @@ function showLevelVictoryModal(levelConfig, starsEarned, finalScore) {
 function handleLevelWin(levelConfig) {
     console.log(`¡Nivel ${levelConfig.id} completado! Puntuación: ${score}, Criterio Estrellas: ${levelConfig.starCriteria}`);
     
+    // Limpiar sistema de cemento al ganar
+    cleanupCementSystem();
+    
+    // Limpiar sistema de anillos al ganar
+    cleanupRingEffects();
+    
     let starsEarned = 0;
 
     if (levelConfig.starCriteria === 'time' && levelConfig.starsThresholds) {
@@ -963,6 +1532,16 @@ function handleLevelCardClick(event) {
 function renderLevelCards() {
     const grid = document.getElementById('levels-grid');
     if (!grid) return;
+    
+    // Crear contenedor si no existe
+    let container = grid.parentElement.querySelector('.levels-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'levels-container';
+        grid.parentElement.appendChild(container);
+        container.appendChild(grid);
+    }
+    
     grid.innerHTML = ''; // Limpiar tarjetas existentes
 
     Object.values(levelsConfiguration).forEach(level => {
@@ -999,6 +1578,43 @@ function renderLevelCards() {
         }
         grid.appendChild(card);
     });
+    
+    // Configurar detección de scroll para móviles
+    setupMobileScrollDetection();
+}
+
+// --- FUNCIÓN PARA MEJORAR NAVEGACIÓN MÓVIL ---
+function setupMobileScrollDetection() {
+    const levelScreen = document.getElementById('level-selection-screen');
+    if (!levelScreen) return;
+    
+    // Detectar primer scroll para ocultar indicador
+    let hasScrolled = false;
+    const handleScroll = () => {
+        if (!hasScrolled && levelScreen.scrollTop > 50) {
+            hasScrolled = true;
+            levelScreen.classList.add('scrolled');
+            levelScreen.removeEventListener('scroll', handleScroll);
+        }
+    };
+    
+    // Limpiar listener anterior si existe
+    levelScreen.removeEventListener('scroll', handleScroll);
+    levelScreen.addEventListener('scroll', handleScroll, { passive: true });
+    
+    // Resetear estado de scroll
+    levelScreen.classList.remove('scrolled');
+    
+    // Mejorar experiencia táctil en móviles
+    if (window.innerWidth <= 768) {
+        // Añadir clase para estilos específicos de móvil
+        levelScreen.classList.add('mobile-view');
+        
+        // Scroll suave al inicio
+        levelScreen.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+        levelScreen.classList.remove('mobile-view');
+    }
 }
 
 function initializeLevel(levelId) {
@@ -1105,7 +1721,17 @@ function initializeLevel(levelId) {
 
         displayLevelObjective(levelConfig); // Llamar a la versión SIMPLIFICADA
 
-        updateScreenVisibility(); 
+        // Iniciar lluvia de cemento si es el Nivel 3
+        if (levelConfig.id === 3 && levelConfig.cementRainInterval) {
+            startCementRain(levelConfig);
+        }
+
+        // Inicializar sistema de anillos si es el Nivel 4
+        if (levelConfig.id === 4 && levelConfig.targetRingsToCollect) {
+            initializeRingSystem(levelConfig);
+        }
+
+        updateScreenVisibility();
         console.log(`Nivel ${levelId} completamente cargado y listo para jugar.`);
     });
 }
@@ -1130,9 +1756,9 @@ function displayLevelObjective(levelConfig) { // VERSIÓN SIMPLIFICADA
 
     let content = ""; // Reiniciar contenido
     
-    if (levelConfig.targetScore && !levelConfig.targetFrozenPiecesToClear && typeof levelConfig.maxMoves === 'undefined') { // Solo Nivel 1 (o similar)
+    if (levelConfig.targetScore && !levelConfig.targetFrozenPiecesToClear && !levelConfig.targetRingsToCollect && typeof levelConfig.maxMoves === 'undefined') { // Solo Nivel 1 (o similar)
         content = `<p><span class="info-label">Meta:</span> ${levelConfig.targetScore} Pts</p>`;
-    } else { // Para niveles con movimientos y/o piezas congeladas (como Nivel 2)
+    } else { // Para niveles con movimientos y/o objetivos específicos
         let parts = [];
         if (typeof levelConfig.maxMoves !== 'undefined') {
             parts.push(`<span class="info-label">Mov:</span> <span id="moves-remaining-display">${movesRemaining}</span>`);
@@ -1140,6 +1766,9 @@ function displayLevelObjective(levelConfig) { // VERSIÓN SIMPLIFICADA
         if (levelConfig.targetFrozenPiecesToClear) {
             const clearedCount = frozenPiecesData.filter(p => p.currentStage <= 0).length;
             parts.push(`<span class="info-label">Hielo:</span> <span id="frozen-pieces-cleared-display">${clearedCount}</span>/${levelConfig.targetFrozenPiecesToClear}`);
+        }
+        if (levelConfig.targetRingsToCollect) {
+            parts.push(`<span class="info-label">Anillos:</span> <span id="rings-collected-display">${ringsCollected}</span>/${levelConfig.targetRingsToCollect}`);
         }
         if (parts.length > 0) {
             content = `<p>${parts.join(' | ')}</p>`;
@@ -1166,3 +1795,325 @@ function hideLevelObjective() {
 // ... (resto de las funciones originales de levels_mode.js)
 // ... (resto de las funciones originales de script.js)
 // ... (resto de las funciones originales de levels_mode.js) 
+
+// --- CLASE PARA EFECTOS DE ANILLOS RECOLECTADOS ---
+class CollectedRingEffect {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.particles = [];
+        this.life = 60; // Duración del efecto en frames
+        this.maxLife = 60;
+        
+        // Crear partículas doradas
+        for (let i = 0; i < 12; i++) {
+            this.particles.push({
+                x: x,
+                y: y,
+                speedX: (Math.random() - 0.5) * 6,
+                speedY: (Math.random() - 0.5) * 6 - 2,
+                life: Math.random() * 40 + 20,
+                maxLife: Math.random() * 40 + 20,
+                size: Math.random() * 4 + 2,
+                color: this.getRandomGoldColor(),
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.3,
+                update() {
+                    this.life--;
+                    this.x += this.speedX;
+                    this.y += this.speedY;
+                    this.speedY += 0.15; // Gravedad ligera
+                    this.speedX *= 0.98; // Fricción
+                    this.rotation += this.rotationSpeed;
+                }
+            });
+        }
+    }
+    
+    getRandomGoldColor() {
+        const goldColors = [
+            '#FFD700', // Oro clásico
+            '#FFA500', // Naranja dorado
+            '#FFFF00', // Amarillo brillante
+            '#FFE55C', // Oro claro
+            '#DAA520'  // Oro oscuro
+        ];
+        return goldColors[Math.floor(Math.random() * goldColors.length)];
+    }
+    
+    update() {
+        this.life--;
+        
+        // Actualizar partículas
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const particle = this.particles[i];
+            particle.update();
+            if (particle.life <= 0) {
+                this.particles.splice(i, 1);
+            }
+        }
+        
+        return this.life <= 0 && this.particles.length === 0;
+    }
+    
+    draw() {
+        // Dibujar usando elementos DOM en lugar de canvas para mayor compatibilidad
+        this.particles.forEach(particle => {
+            if (particle.life > 0) {
+                // Crear elemento temporal para la partícula si no existe
+                if (!particle.element) {
+                    particle.element = document.createElement('div');
+                    particle.element.className = 'ring-particle';
+                    particle.element.style.position = 'absolute';
+                    particle.element.style.pointerEvents = 'none';
+                    particle.element.style.zIndex = '2000';
+                    particle.element.style.width = particle.size + 'px';
+                    particle.element.style.height = particle.size + 'px';
+                    particle.element.style.borderRadius = '50%';
+                    particle.element.style.backgroundColor = particle.color;
+                    particle.element.style.boxShadow = `0 0 ${particle.size}px ${particle.color}`;
+                    document.body.appendChild(particle.element);
+                }
+                
+                // Actualizar posición y opacidad
+                particle.element.style.left = particle.x + 'px';
+                particle.element.style.top = particle.y + 'px';
+                particle.element.style.opacity = particle.life / particle.maxLife;
+                particle.element.style.transform = `rotate(${particle.rotation}rad) scale(${particle.life / particle.maxLife})`;
+            }
+        });
+    }
+    
+    cleanup() {
+        // Limpiar elementos DOM de las partículas
+        this.particles.forEach(particle => {
+            if (particle.element && particle.element.parentNode) {
+                particle.element.parentNode.removeChild(particle.element);
+            }
+        });
+        this.particles = [];
+    }
+} 
+
+// --- FUNCIONES DEL SISTEMA DE ANILLOS ---
+function addRingToPiece(pieceElement) {
+    if (!pieceElement || !pieceElement.pieceMatrix) return;
+    
+    const matrix = pieceElement.pieceMatrix;
+    const validPositions = [];
+    
+    // Encontrar todas las posiciones válidas (bloques de la pieza)
+    for (let r = 0; r < matrix.length; r++) {
+        for (let c = 0; c < matrix[r].length; c++) {
+            if (matrix[r][c] === 1) {
+                validPositions.push({ row: r, col: c });
+            }
+        }
+    }
+    
+    if (validPositions.length === 0) return;
+    
+    // Elegir posición aleatoria para el anillo
+    const randomPos = validPositions[Math.floor(Math.random() * validPositions.length)];
+    
+    // Crear datos del anillo
+    const ringId = `ring_${++ringIdCounter}`;
+    pieceElement.ringData = {
+        hasRing: true,
+        ringPosition: randomPos,
+        ringId: ringId
+    };
+    
+    // Añadir clase visual
+    pieceElement.classList.add('piece-with-ring');
+    
+    // Crear elemento visual del anillo
+    createRingElement(pieceElement, randomPos, ringId);
+    
+    console.log(`Anillo ${ringId} añadido a pieza en posición [${randomPos.row}, ${randomPos.col}]`);
+}
+
+function createRingElement(pieceElement, position, ringId) {
+    const ringElement = document.createElement('div');
+    ringElement.className = 'golden-ring';
+    ringElement.id = ringId;
+    
+    // NUEVO MÉTODO: Usar el mismo sistema que funciona en el tablero
+    // En lugar de calcular posiciones manualmente, vamos a posicionar el anillo
+    // directamente sobre la celda específica de la pieza
+    
+    // Encontrar la celda específica donde debe ir el anillo
+    const pieceCells = pieceElement.querySelectorAll('.piece-block');
+    const pieceMatrix = pieceElement.pieceMatrix;
+    
+    // Calcular el índice de la celda objetivo en el array de celdas
+    let targetCellIndex = -1;
+    let currentIndex = 0;
+    
+    for (let r = 0; r < pieceMatrix.length; r++) {
+        for (let c = 0; c < pieceMatrix[r].length; c++) {
+            if (pieceMatrix[r][c] === 1) { // Es una celda de pieza
+                if (r === position.row && c === position.col) {
+                    targetCellIndex = currentIndex;
+                    break;
+                }
+                currentIndex++;
+            }
+        }
+        if (targetCellIndex !== -1) break;
+    }
+    
+    if (targetCellIndex !== -1 && pieceCells[targetCellIndex]) {
+        const targetCell = pieceCells[targetCellIndex];
+        
+        // Aplicar el mismo método que funciona en el tablero
+        targetCell.style.position = 'relative';
+        
+        // Configurar el anillo con posicionamiento absoluto centrado
+        ringElement.style.position = 'absolute';
+        ringElement.style.top = '50%';
+        ringElement.style.left = '50%';
+        ringElement.style.transform = 'translate(-50%, -50%)';
+        ringElement.style.width = '14px'; // Ligeramente más pequeño para las piezas
+        ringElement.style.height = '14px';
+        ringElement.style.margin = '0';
+        ringElement.style.padding = '0';
+        ringElement.style.boxSizing = 'border-box';
+        ringElement.style.zIndex = '1002';
+        ringElement.style.pointerEvents = 'none';
+        ringElement.style.userSelect = 'none';
+        ringElement.style.touchAction = 'none';
+        
+        // Añadir el anillo directamente a la celda específica
+        targetCell.appendChild(ringElement);
+        
+        console.log(`DEBUG: Anillo ${ringId} añadido directamente a la celda [${position.row}, ${position.col}] usando el método del tablero`);
+    } else {
+        console.error(`No se pudo encontrar la celda objetivo para el anillo en posición [${position.row}, ${position.col}]`);
+    }
+    
+    // Asegurar que la pieza tenga overflow visible
+    pieceElement.style.overflow = 'visible';
+}
+
+function collectRing(pieceElement) {
+    if (!pieceElement || !pieceElement.ringData || !pieceElement.ringData.hasRing) {
+        return false;
+    }
+    
+    const ringData = pieceElement.ringData;
+    const ringElement = document.getElementById(ringData.ringId);
+    
+    if (ringElement) {
+        // Obtener posición del anillo para el efecto
+        const ringRect = ringElement.getBoundingClientRect();
+        const centerX = ringRect.left + ringRect.width / 2;
+        const centerY = ringRect.top + ringRect.height / 2;
+        
+        // Crear efecto de recolección
+        const effect = new CollectedRingEffect(centerX, centerY);
+        collectedRingEffects.push(effect);
+        
+        // Iniciar animación de efectos si no está corriendo
+        if (!ringEffectAnimationId) {
+            animateRingEffects();
+        }
+        
+        // Animar la recolección del anillo
+        ringElement.classList.add('ring-collected');
+        
+        // Remover el anillo después de la animación
+        setTimeout(() => {
+            if (ringElement.parentNode) {
+                ringElement.parentNode.removeChild(ringElement);
+            }
+        }, 600);
+        
+        // Actualizar contador
+        ringsCollected++;
+        updateRingsDisplay();
+        
+        // Limpiar datos del anillo de la pieza
+        pieceElement.ringData.hasRing = false;
+        pieceElement.classList.remove('piece-with-ring');
+        
+        console.log(`Anillo ${ringData.ringId} recolectado! Total: ${ringsCollected}`);
+        
+        // Mostrar puntuación flotante
+        showFloatingScore(50, ringElement); // 50 puntos por anillo
+        updateScore(50);
+        
+        return true;
+    }
+    
+    return false;
+}
+
+function animateRingEffects() {
+    // Actualizar todos los efectos de anillos
+    for (let i = collectedRingEffects.length - 1; i >= 0; i--) {
+        const effect = collectedRingEffects[i];
+        const finished = effect.update();
+        effect.draw();
+        
+        if (finished) {
+            effect.cleanup();
+            collectedRingEffects.splice(i, 1);
+        }
+    }
+    
+    // Continuar animación si hay efectos
+    if (collectedRingEffects.length > 0) {
+        ringEffectAnimationId = requestAnimationFrame(animateRingEffects);
+    } else {
+        ringEffectAnimationId = null;
+    }
+}
+
+function updateRingsDisplay() {
+    const ringsDisplay = document.getElementById('rings-collected-display');
+    if (ringsDisplay) {
+        ringsDisplay.textContent = ringsCollected;
+    }
+}
+
+function initializeRingSystem(levelConfig) {
+    if (!levelConfig.targetRingsToCollect) return;
+    
+    console.log("Inicializando sistema de anillos...");
+    
+    // Resetear contadores
+    ringsCollected = 0;
+    totalRingsInLevel = levelConfig.targetRingsToCollect;
+    ringIdCounter = 0;
+    
+    // Limpiar efectos anteriores
+    cleanupRingEffects();
+    
+    // Actualizar display
+    updateRingsDisplay();
+    
+    console.log(`Sistema de anillos inicializado. Objetivo: ${totalRingsInLevel} anillos`);
+}
+
+function cleanupRingEffects() {
+    // Detener animación
+    if (ringEffectAnimationId) {
+        cancelAnimationFrame(ringEffectAnimationId);
+        ringEffectAnimationId = null;
+    }
+    
+    // Limpiar efectos
+    collectedRingEffects.forEach(effect => effect.cleanup());
+    collectedRingEffects = [];
+    
+    // Limpiar partículas DOM restantes
+    const particles = document.querySelectorAll('.ring-particle');
+    particles.forEach(particle => {
+        if (particle.parentNode) {
+            particle.parentNode.removeChild(particle);
+        }
+    });
+    
+    console.log("Sistema de anillos limpiado");
+}
