@@ -42,6 +42,21 @@ let ringIdCounter = 0; // Contador para IDs únicos de anillos
 let collectedRingEffects = []; // Array para efectos de recolección
 let ringEffectAnimationId = null; // ID de animación de efectos de anillos
 
+// --- NUEVAS VARIABLES PARA SISTEMA DE RAYOS ELÉCTRICOS ---
+let lightningTimeoutId = null; // Para el temporizador de rayos
+let lightningWarningTimeoutId = null; // Para la advertencia previa
+let lightningCanvas = null; // Canvas para efectos de rayos
+let lightningCtx = null; // Contexto del canvas de rayos
+let electrifiedCells = new Map(); // Mapa de celdas electrificadas {key: {row, col, endTime}}
+let lightningAnimationId = null; // ID de animación de rayos
+let lightningEffects = []; // Array de efectos de rayos activos
+let lightningParticles = []; // Partículas de efectos eléctricos
+let lightningWarnings = []; // Array de advertencias de rayos
+let isLightningWarningActive = false; // Si hay advertencia activa
+let currentLightningTarget = null; // Objetivo actual del rayo
+let lightningComboMultiplier = 1; // Multiplicador de combo eléctrico
+let electricalSoundEnabled = true; // Control de sonidos eléctricos
+
 // --- CLASE PARA PIEZAS DE CEMENTO CAYENDO ---
 class FallingCementPiece {
     constructor(targetRow, targetCol) {
@@ -436,6 +451,19 @@ const levelsConfiguration = {
         locked: false, // Desbloqueado para probar
         starCriteria: 'movesRemaining',
         starsThresholds: { threeStars: 8, twoStars: 4 } // 3 estrellas >= 8 mov. restantes, 2 estrellas >= 4 mov. restantes
+    },
+    5: { 
+        id: 5, 
+        name: "Nivel 5 - Tormenta Eléctrica", 
+        objectiveText: "Alcanza 1000 puntos en 90 segundos mientras rayos electrifican el tablero.", 
+        targetScore: 1000,
+        maxTimeSeconds: 90, // 90 segundos límite
+        lightningInterval: 20000, // Rayos cada 20 segundos
+        lightningWarningTime: 2000, // Advertencia de 2 segundos
+        electrifiedDuration: 8000, // Zonas electrificadas por 8 segundos
+        locked: false, // Desbloqueado para probar
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 60, twoStars: 75 } // 3 estrellas <= 60s, 2 estrellas <= 75s
     },
     // ... más niveles
 };
@@ -888,9 +916,20 @@ function canPlacePiece_levels(pieceMatrix, startRow, startCol) {
                 if (boardR >= 10 || boardC >= 10 || boardR < 0 || boardC < 0) {
                     return false; 
                 }
-                // Ahora también verificamos cemento (estado 3)
+                // Verificar si hay una pieza, hielo o cemento
                 if (board[boardR][boardC] === 1 || board[boardR][boardC] === 2 || board[boardR][boardC] === 3) { 
                     return false; 
+                }
+                
+                // NUEVA VERIFICACIÓN: Zonas electrificadas inhabilitadas
+                const cellKey = `${boardR}-${boardC}`;
+                if (electrifiedCells.has(cellKey)) {
+                    const electrifiedData = electrifiedCells.get(cellKey);
+                    // Solo bloquear si es una zona vacía electrificada (no una pieza existente electrificada)
+                    if (!electrifiedData.hasExistingPiece && Date.now() < electrifiedData.endTime) {
+                        console.log(`🚫 Celda [${boardR}, ${boardC}] bloqueada por electrificación hasta`, new Date(electrifiedData.endTime).toLocaleTimeString());
+                        return false;
+                    }
                 }
             }
         }
@@ -1159,6 +1198,56 @@ async function checkAndClearLines_levels() {
                 showFloatingScore(pointsEarnedThisTurn, cellElementsForParticles[0].element);
             }
         }
+        
+        // --- SISTEMA DE COMBO ELÉCTRICO PARA NIVEL 5 ---
+        if (currentSelectedLevelId === 5 && cellsToClearLogically.size > 0) {
+            let electrifiedCellsInLines = 0;
+            
+            // Contar celdas electrificadas en las líneas completadas
+            cellsToClearLogically.forEach(cellData => {
+                const { row, col } = cellData;
+                const cellKey = `${row}-${col}`;
+                if (electrifiedCells.has(cellKey)) {
+                    const electrifiedData = electrifiedCells.get(cellKey);
+                    if (electrifiedData.hasExistingPiece) {
+                        electrifiedCellsInLines++;
+                    }
+                }
+            });
+            
+            // Aplicar bonus por combo eléctrico
+            if (electrifiedCellsInLines > 0) {
+                let electricBonus = 0;
+                let comboMessage = "";
+                
+                if (electrifiedCellsInLines === 1) {
+                    electricBonus = 50;
+                    comboMessage = "⚡ Chispa Eléctrica! +50";
+                } else if (electrifiedCellsInLines === 2) {
+                    electricBonus = 100;
+                    comboMessage = "⚡⚡ Descarga Doble! +100";
+                } else if (electrifiedCellsInLines >= 3) {
+                    electricBonus = 200;
+                    comboMessage = "⚡⚡⚡ TORMENTA ELÉCTRICA! +200";
+                    
+                    // Efecto especial para combos grandes
+                    createElectricStormScreenEffect();
+                }
+                
+                // Añadir puntos del combo
+                pointsEarnedThisTurn += electricBonus;
+                updateScore(electricBonus);
+                
+                // Mostrar mensaje de combo
+                showElectricBonusMessage(comboMessage, cellElementsForParticles[0]?.element);
+                
+                // Crear efectos visuales especiales
+                createElectricComboEffect(cellsToClearLogically, electrifiedCellsInLines);
+                
+                console.log(`🌩️ Combo eléctrico: ${electrifiedCellsInLines} celdas electrificadas, bonus: +${electricBonus}`);
+            }
+        }
+        
         console.log(`PARTICLE DEBUG (levels): Celdas para partículas: ${cellElementsForParticles.length}`);
         cellElementsForParticles.forEach(item => {
             if(!item.element) console.error("PARTICLE DEBUG (levels): item.element es undefined");
@@ -1209,6 +1298,9 @@ function handleGameOver_levels(reason = "¡Nivel Fallido!") {
     
     // Limpiar sistema de anillos
     cleanupRingEffects();
+    
+    // Limpiar sistema de rayos
+    cleanupLightningSystem();
     
     if (draggedPieceElement_levels && draggedPieceElement_levels.parentNode === document.body) {
         document.body.removeChild(draggedPieceElement_levels);
@@ -1276,6 +1368,24 @@ function boardIsEmpty_levels() {
 function checkGameOver_levels() {
   const levelConfig = levelsConfiguration[currentSelectedLevelId];
   if (!levelConfig) return false; 
+  
+  // Verificar límite de tiempo para niveles con maxTimeSeconds (como Nivel 5)
+  if (levelConfig.maxTimeSeconds && levelStartTime > 0) {
+    const elapsedSeconds = (Date.now() - levelStartTime) / 1000;
+    if (elapsedSeconds >= levelConfig.maxTimeSeconds) {
+      // Verificar si se cumplió el objetivo antes del tiempo límite
+      let objectivesMet = false;
+      if (levelConfig.targetScore && score >= levelConfig.targetScore) {
+        objectivesMet = true;
+      }
+      
+      if (!objectivesMet) {
+        handleGameOver_levels("¡Tiempo Agotado!");
+        return true;
+      }
+    }
+  }
+  
   if (typeof levelConfig.maxMoves !== 'undefined' && movesRemaining <= 0) {
     let objectivesMet = true; 
     if (levelConfig.targetFrozenPiecesToClear) {
@@ -1426,11 +1536,10 @@ function showLevelVictoryModal(levelConfig, starsEarned, finalScore) {
 function handleLevelWin(levelConfig) {
     console.log(`¡Nivel ${levelConfig.id} completado! Puntuación: ${score}, Criterio Estrellas: ${levelConfig.starCriteria}`);
     
-    // Limpiar sistema de cemento al ganar
+    // Limpiar sistemas
     cleanupCementSystem();
-    
-    // Limpiar sistema de anillos al ganar
     cleanupRingEffects();
+    cleanupLightningSystem();
     
     let starsEarned = 0;
 
@@ -1731,6 +1840,11 @@ function initializeLevel(levelId) {
             initializeRingSystem(levelConfig);
         }
 
+        // Inicializar sistema de rayos si es el Nivel 5
+        if (levelConfig.id === 5 && levelConfig.lightningInterval) {
+            startLightningStorm(levelConfig);
+        }
+
         updateScreenVisibility();
         console.log(`Nivel ${levelId} completamente cargado y listo para jugar.`);
     });
@@ -1756,7 +1870,22 @@ function displayLevelObjective(levelConfig) { // VERSIÓN SIMPLIFICADA
 
     let content = ""; // Reiniciar contenido
     
-    if (levelConfig.targetScore && !levelConfig.targetFrozenPiecesToClear && !levelConfig.targetRingsToCollect && typeof levelConfig.maxMoves === 'undefined') { // Solo Nivel 1 (o similar)
+    // Nivel 5 - Tormenta Eléctrica con temporizador
+    if (levelConfig.id === 5 && levelConfig.maxTimeSeconds) {
+        const remainingTime = Math.max(0, levelConfig.maxTimeSeconds - Math.floor((Date.now() - levelStartTime) / 1000));
+        const minutes = Math.floor(remainingTime / 60);
+        const seconds = remainingTime % 60;
+        const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        
+        content = `<p><span class="info-label">Meta:</span> ${levelConfig.targetScore} Pts | <span class="info-label">Tiempo:</span> <span id="time-remaining-display" class="${remainingTime <= 15 ? 'critical' : remainingTime <= 30 ? 'warning' : ''}">${timeString}</span></p>`;
+        
+        // Actualizar cada segundo
+        setTimeout(() => {
+            if (currentSelectedLevelId === 5 && levelStartTime > 0) {
+                displayLevelObjective(levelConfig);
+            }
+        }, 1000);
+    } else if (levelConfig.targetScore && !levelConfig.targetFrozenPiecesToClear && !levelConfig.targetRingsToCollect && typeof levelConfig.maxMoves === 'undefined') { // Solo Nivel 1 (o similar)
         content = `<p><span class="info-label">Meta:</span> ${levelConfig.targetScore} Pts</p>`;
     } else { // Para niveles con movimientos y/o objetivos específicos
         let parts = [];
@@ -1815,16 +1944,12 @@ class CollectedRingEffect {
                 life: Math.random() * 40 + 20,
                 maxLife: Math.random() * 40 + 20,
                 size: Math.random() * 4 + 2,
-                color: this.getRandomGoldColor(),
-                rotation: Math.random() * Math.PI * 2,
-                rotationSpeed: (Math.random() - 0.5) * 0.3,
                 update() {
                     this.life--;
                     this.x += this.speedX;
                     this.y += this.speedY;
                     this.speedY += 0.15; // Gravedad ligera
                     this.speedX *= 0.98; // Fricción
-                    this.rotation += this.rotationSpeed;
                 }
             });
         }
@@ -2116,4 +2241,906 @@ function cleanupRingEffects() {
     });
     
     console.log("Sistema de anillos limpiado");
+}
+
+// --- FUNCIONES DEL SISTEMA DE RAYOS ELÉCTRICOS ---
+
+function setupLightningCanvas() {
+    // Crear canvas para efectos de rayos si no existe
+    if (!lightningCanvas) {
+        lightningCanvas = document.createElement('canvas');
+        lightningCanvas.id = 'lightningCanvas';
+        lightningCanvas.style.position = 'absolute';
+        lightningCanvas.style.top = '0';
+        lightningCanvas.style.left = '0';
+        lightningCanvas.style.pointerEvents = 'none';
+        lightningCanvas.style.zIndex = '1000';
+        document.body.appendChild(lightningCanvas);
+        lightningCtx = lightningCanvas.getContext('2d');
+    }
+    
+    // Ajustar tamaño del canvas
+    lightningCanvas.width = window.innerWidth;
+    lightningCanvas.height = window.innerHeight;
+    
+    console.log("Canvas de rayos configurado:", lightningCanvas.width, "x", lightningCanvas.height);
+}
+
+function startLightningStorm(levelConfig) {
+    if (!levelConfig.lightningInterval) return;
+    
+    console.log("🌩️ Iniciando tormenta eléctrica cada", levelConfig.lightningInterval / 1000, "segundos");
+    setupLightningCanvas();
+    
+    // Función para programar el próximo rayo
+    const scheduleNextLightning = () => {
+        lightningTimeoutId = setTimeout(() => {
+            triggerLightningWarning(levelConfig);
+        }, levelConfig.lightningInterval);
+    };
+    
+    // Programar el primer rayo
+    scheduleNextLightning();
+    
+    // Iniciar animación de efectos
+    if (!lightningAnimationId) {
+        animateLightningEffects();
+    }
+}
+
+function triggerLightningWarning(levelConfig) {
+    if (!boardElement) return;
+    
+    // Seleccionar objetivo aleatorio en el tablero
+    const targetRow = Math.floor(Math.random() * 10);
+    const targetCol = Math.floor(Math.random() * 10);
+    
+    // GUARDAR las coordenadas exactas para usar en el impacto
+    currentLightningTarget = { row: targetRow, col: targetCol };
+    isLightningWarningActive = true;
+    
+    console.log(`⚠️ Advertencia de rayo en posición [${targetRow}, ${targetCol}]`);
+    
+    // Mostrar advertencia visual
+    showLightningWarning(targetRow, targetCol);
+    
+    // Programar el impacto del rayo - USAR LAS MISMAS COORDENADAS
+    lightningWarningTimeoutId = setTimeout(() => {
+        strikeLightning(currentLightningTarget.row, currentLightningTarget.col, levelConfig);
+    }, levelConfig.lightningWarningTime);
+    
+    // Programar el próximo rayo
+    lightningTimeoutId = setTimeout(() => {
+        triggerLightningWarning(levelConfig);
+    }, levelConfig.lightningInterval);
+}
+
+function showLightningWarning(targetRow, targetCol) {
+    if (!boardElement) return;
+    
+    const cellElement = boardElement.querySelector(`[data-row='${targetRow}'][data-col='${targetCol}']`);
+    if (!cellElement) return;
+    
+    // Añadir clase de advertencia
+    cellElement.classList.add('lightning-warning');
+    
+    // Crear efecto de nubes oscuras MEJORADO
+    createStormClouds();
+    
+    // Sonido de trueno lejano (simulado con vibración de pantalla)
+    if (gameContainerElement) {
+        gameContainerElement.classList.add('storm-rumble');
+        setTimeout(() => {
+            gameContainerElement.classList.remove('storm-rumble');
+        }, 2000);
+    }
+    
+    // Añadir efecto de tormenta al contenedor del juego
+    if (gameContainerElement) {
+        gameContainerElement.classList.add('lightning-active');
+    }
+}
+
+function createStormClouds() {
+    // Crear elemento de nubes si no existe
+    let stormCloudsElement = document.getElementById('storm-clouds-overlay');
+    if (!stormCloudsElement) {
+        stormCloudsElement = document.createElement('div');
+        stormCloudsElement.id = 'storm-clouds-overlay';
+        stormCloudsElement.className = 'storm-clouds';
+        document.body.appendChild(stormCloudsElement);
+    }
+    
+    // Mostrar las nubes
+    stormCloudsElement.style.display = 'block';
+    stormCloudsElement.style.opacity = '1';
+    
+    // Oscurecer ligeramente toda la pantalla en el canvas también
+    if (lightningCanvas && lightningCtx) {
+        lightningCtx.save();
+        lightningCtx.fillStyle = 'rgba(20, 20, 40, 0.2)';
+        lightningCtx.fillRect(0, 0, lightningCanvas.width, lightningCanvas.height);
+        lightningCtx.restore();
+    }
+    
+    // Programar la limpieza de las nubes después del impacto
+    setTimeout(() => {
+        if (stormCloudsElement) {
+            stormCloudsElement.style.opacity = '0';
+            setTimeout(() => {
+                if (stormCloudsElement) {
+                    stormCloudsElement.style.display = 'none';
+                }
+            }, 1000);
+        }
+    }, 3000);
+}
+
+function strikeLightning(targetRow, targetCol, levelConfig) {
+    console.log(`⚡ RAYO IMPACTA en [${targetRow}, ${targetCol}]!`);
+    
+    isLightningWarningActive = false;
+    currentLightningTarget = null;
+    
+    // Limpiar advertencia visual
+    const cellElement = boardElement.querySelector(`[data-row='${targetRow}'][data-col='${targetCol}']`);
+    if (cellElement) {
+        cellElement.classList.remove('lightning-warning');
+    }
+    
+    // Limpiar efecto de tormenta del contenedor
+    if (gameContainerElement) {
+        gameContainerElement.classList.remove('lightning-active');
+    }
+    
+    // Crear efecto visual del rayo
+    createLightningBolt(targetRow, targetCol);
+    
+    // Electrificar la zona de impacto
+    electrifyArea(targetRow, targetCol, levelConfig);
+    
+    // Efectos de pantalla
+    createScreenFlash();
+    createScreenShake();
+    
+    // Sonido de trueno (simulado)
+    playThunderSound();
+    
+    // Limpiar nubes de tormenta gradualmente
+    const stormCloudsElement = document.getElementById('storm-clouds-overlay');
+    if (stormCloudsElement) {
+        setTimeout(() => {
+            stormCloudsElement.style.opacity = '0.3';
+        }, 500);
+        setTimeout(() => {
+            stormCloudsElement.style.opacity = '0';
+        }, 1500);
+        setTimeout(() => {
+            stormCloudsElement.style.display = 'none';
+        }, 2500);
+    }
+}
+
+function createLightningBolt(targetRow, targetCol) {
+    if (!boardElement || !lightningCanvas) return;
+    
+    const cellElement = boardElement.querySelector(`[data-row='${targetRow}'][data-col='${targetCol}']`);
+    if (!cellElement) return;
+    
+    const cellRect = cellElement.getBoundingClientRect();
+    const targetX = cellRect.left + cellRect.width / 2;
+    const targetY = cellRect.top + cellRect.height / 2;
+    
+    // Punto de inicio del rayo (arriba de la pantalla)
+    const startX = targetX + (Math.random() - 0.5) * 100;
+    const startY = -50;
+    
+    // Crear múltiples rayos para efecto más dramático
+    for (let i = 0; i < 3; i++) {
+        setTimeout(() => {
+            const bolt = new LightningBolt(
+                startX + (Math.random() - 0.5) * 50,
+                startY,
+                targetX + (Math.random() - 0.5) * 20,
+                targetY + (Math.random() - 0.5) * 20
+            );
+            lightningEffects.push(bolt);
+        }, i * 50);
+    }
+    
+    // Crear efecto de impacto
+    const impact = new LightningImpactEffect(targetX, targetY, 2);
+    lightningEffects.push(impact);
+    
+    // Añadir partículas adicionales
+    for (let i = 0; i < 30; i++) {
+        lightningParticles.push(new ElectricParticle(
+            targetX + (Math.random() - 0.5) * 40,
+            targetY + (Math.random() - 0.5) * 40,
+            Math.random() < 0.6 ? 'spark' : 'glow'
+        ));
+    }
+}
+
+function electrifyArea(centerRow, centerCol, levelConfig) {
+    const currentTime = Date.now();
+    const endTime = currentTime + levelConfig.electrifiedDuration;
+    
+    // Determinar el tamaño del área según la dificultad
+    let areaSize = 3; // Por defecto 3x3
+    const elapsedTime = (currentTime - levelStartTime) / 1000;
+    if (elapsedTime > 45) { // Después de 45 segundos, área 5x5
+        areaSize = 5;
+    }
+    
+    const halfSize = Math.floor(areaSize / 2);
+    
+    // Electrificar área
+    for (let r = centerRow - halfSize; r <= centerRow + halfSize; r++) {
+        for (let c = centerCol - halfSize; c <= centerCol + halfSize; c++) {
+            // Verificar límites del tablero
+            if (r >= 0 && r < 10 && c >= 0 && c < 10) {
+                const key = `${r}-${c}`;
+                
+                // Si hay una pieza en esta posición, electrificarla
+                if (board[r][c] === 1) {
+                    electrifiedCells.set(key, {
+                        row: r,
+                        col: c,
+                        endTime: endTime,
+                        hasExistingPiece: true
+                    });
+                    
+                    // Aplicar efecto visual a la pieza existente
+                    const cellElement = boardElement.querySelector(`[data-row='${r}'][data-col='${c}']`);
+                    if (cellElement) {
+                        cellElement.classList.add('electrified');
+                        cellElement.dataset.electrifiedUntil = endTime;
+                    }
+                } else {
+                    // Celda vacía - inhabilitar para nuevas piezas
+                    electrifiedCells.set(key, {
+                        row: r,
+                        col: c,
+                        endTime: endTime,
+                        hasExistingPiece: false
+                    });
+                    
+                    // Aplicar efecto visual de zona inhabilitada
+                    const cellElement = boardElement.querySelector(`[data-row='${r}'][data-col='${c}']`);
+                    if (cellElement) {
+                        cellElement.classList.add('electrified', 'disabled');
+                        cellElement.dataset.electrifiedUntil = endTime;
+                    }
+                }
+                
+                console.log(`⚡ Celda [${r}, ${c}] electrificada hasta`, new Date(endTime).toLocaleTimeString());
+            }
+        }
+    }
+    
+    // Programar limpieza automática
+    setTimeout(() => {
+        cleanupExpiredElectrification();
+    }, levelConfig.electrifiedDuration + 100);
+}
+
+function cleanupExpiredElectrification() {
+    const currentTime = Date.now();
+    const expiredKeys = [];
+    
+    electrifiedCells.forEach((data, key) => {
+        if (currentTime >= data.endTime) {
+            expiredKeys.push(key);
+            
+            // Limpiar efectos visuales
+            const cellElement = boardElement.querySelector(`[data-row='${data.row}'][data-col='${data.col}']`);
+            if (cellElement) {
+                cellElement.classList.remove('electrified', 'disabled');
+                delete cellElement.dataset.electrifiedUntil;
+            }
+        }
+    });
+    
+    // Remover celdas expiradas
+    expiredKeys.forEach(key => {
+        electrifiedCells.delete(key);
+        console.log(`🔌 Electrificación expirada en celda ${key}`);
+    });
+}
+
+function createScreenFlash() {
+    if (!lightningCanvas || !lightningCtx) return;
+    
+    // Flash blanco brillante
+    lightningCtx.save();
+    lightningCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    lightningCtx.fillRect(0, 0, lightningCanvas.width, lightningCanvas.height);
+    lightningCtx.restore();
+    
+    // El flash se desvanecerá automáticamente en la próxima animación
+    setTimeout(() => {
+        if (lightningCtx) {
+            lightningCtx.clearRect(0, 0, lightningCanvas.width, lightningCanvas.height);
+        }
+    }, 100);
+}
+
+function createScreenShake() {
+    if (gameContainerElement) {
+        gameContainerElement.classList.add('lightning-shake');
+        setTimeout(() => {
+            gameContainerElement.classList.remove('lightning-shake');
+        }, 500);
+    }
+}
+
+function playThunderSound() {
+    // Simulación de sonido con efectos visuales adicionales
+    console.log("🔊 TRUENO!");
+    
+    // Crear ondas de sonido visuales
+    if (lightningCanvas && lightningCtx) {
+        for (let i = 0; i < 5; i++) {
+            setTimeout(() => {
+                const centerX = lightningCanvas.width / 2;
+                const centerY = lightningCanvas.height / 2;
+                
+                lightningCtx.save();
+                lightningCtx.globalAlpha = 0.3;
+                lightningCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                lightningCtx.lineWidth = 2;
+                lightningCtx.beginPath();
+                lightningCtx.arc(centerX, centerY, i * 50, 0, Math.PI * 2);
+                lightningCtx.stroke();
+                lightningCtx.restore();
+            }, i * 100);
+        }
+    }
+}
+
+function animateLightningEffects() {
+    if (!lightningCtx) return;
+    
+    // Solo limpiar canvas si hay efectos activos para evitar parpadeos
+    const hasActiveEffects = lightningEffects.length > 0 || lightningParticles.length > 0 || isLightningWarningActive;
+    
+    if (hasActiveEffects) {
+        // Limpiar canvas con un fade suave en lugar de limpieza completa
+        lightningCtx.save();
+        lightningCtx.globalCompositeOperation = 'destination-out';
+        lightningCtx.globalAlpha = 0.1; // Fade gradual en lugar de limpieza completa
+        lightningCtx.fillRect(0, 0, lightningCanvas.width, lightningCanvas.height);
+        lightningCtx.restore();
+    }
+    
+    // Actualizar y dibujar efectos de rayos
+    for (let i = lightningEffects.length - 1; i >= 0; i--) {
+        const effect = lightningEffects[i];
+        if (!effect.update()) {
+            lightningEffects.splice(i, 1);
+        } else {
+            effect.draw();
+        }
+    }
+    
+    // Actualizar y dibujar partículas
+    for (let i = lightningParticles.length - 1; i >= 0; i--) {
+        const particle = lightningParticles[i];
+        if (!particle.update()) {
+            lightningParticles.splice(i, 1);
+        } else {
+            particle.draw();
+        }
+    }
+    
+    // Dibujar efectos de advertencia si están activos
+    if (isLightningWarningActive) {
+        drawLightningWarningEffects();
+    }
+    
+    // Continuar animación solo si hay efectos activos o advertencias
+    if (hasActiveEffects || isLightningWarningActive) {
+        lightningAnimationId = requestAnimationFrame(animateLightningEffects);
+    } else {
+        // Limpiar completamente el canvas cuando no hay efectos
+        lightningCtx.clearRect(0, 0, lightningCanvas.width, lightningCanvas.height);
+        lightningAnimationId = null;
+    }
+}
+
+function drawLightningWarningEffects() {
+    if (!currentLightningTarget || !boardElement || !lightningCtx) return;
+    
+    const cellElement = boardElement.querySelector(`[data-row='${currentLightningTarget.row}'][data-col='${currentLightningTarget.col}']`);
+    if (!cellElement) return;
+    
+    const cellRect = cellElement.getBoundingClientRect();
+    const centerX = cellRect.left + cellRect.width / 2;
+    const centerY = cellRect.top + cellRect.height / 2;
+    
+    // Efecto de objetivo pulsante
+    const time = Date.now() * 0.01;
+    const pulse = Math.sin(time) * 0.5 + 0.5;
+    const radius = 20 + pulse * 10;
+    
+    lightningCtx.save();
+    lightningCtx.globalAlpha = 0.7;
+    lightningCtx.strokeStyle = `hsl(${60 + pulse * 60}, 100%, 70%)`;
+    lightningCtx.lineWidth = 3;
+    lightningCtx.shadowColor = lightningCtx.strokeStyle;
+    lightningCtx.shadowBlur = 15;
+    
+    lightningCtx.beginPath();
+    lightningCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    lightningCtx.stroke();
+    
+    // Cruz de objetivo
+    lightningCtx.beginPath();
+    lightningCtx.moveTo(centerX - radius, centerY);
+    lightningCtx.lineTo(centerX + radius, centerY);
+    lightningCtx.moveTo(centerX, centerY - radius);
+    lightningCtx.lineTo(centerX, centerY + radius);
+    lightningCtx.stroke();
+    
+    lightningCtx.restore();
+}
+
+function stopLightningStorm() {
+    console.log("🌤️ Deteniendo tormenta eléctrica");
+    
+    // Limpiar temporizadores
+    if (lightningTimeoutId) {
+        clearTimeout(lightningTimeoutId);
+        lightningTimeoutId = null;
+    }
+    
+    if (lightningWarningTimeoutId) {
+        clearTimeout(lightningWarningTimeoutId);
+        lightningWarningTimeoutId = null;
+    }
+    
+    // Detener animación
+    if (lightningAnimationId) {
+        cancelAnimationFrame(lightningAnimationId);
+        lightningAnimationId = null;
+    }
+    
+    // Limpiar efectos visuales
+    lightningEffects = [];
+    lightningParticles = [];
+    isLightningWarningActive = false;
+    currentLightningTarget = null;
+    
+    // Limpiar electrificación
+    cleanupAllElectrification();
+}
+
+function cleanupAllElectrification() {
+    electrifiedCells.forEach((data, key) => {
+        const cellElement = boardElement.querySelector(`[data-row='${data.row}'][data-col='${data.col}']`);
+        if (cellElement) {
+            cellElement.classList.remove('electrified', 'disabled', 'lightning-warning');
+            delete cellElement.dataset.electrifiedUntil;
+        }
+    });
+    
+    electrifiedCells.clear();
+    console.log("🔌 Toda la electrificación limpiada");
+}
+
+function cleanupLightningSystem() {
+    stopLightningStorm();
+    
+    // Limpiar efectos visuales del contenedor
+    if (gameContainerElement) {
+        gameContainerElement.classList.remove('lightning-active', 'storm-rumble');
+    }
+    
+    // Limpiar nubes de tormenta
+    const stormCloudsElement = document.getElementById('storm-clouds-overlay');
+    if (stormCloudsElement) {
+        stormCloudsElement.remove();
+    }
+    
+    // Limpiar todas las advertencias de rayos
+    const warningElements = document.querySelectorAll('.lightning-warning');
+    warningElements.forEach(element => {
+        element.classList.remove('lightning-warning');
+    });
+    
+    // Remover canvas
+    if (lightningCanvas) {
+        lightningCanvas.remove();
+        lightningCanvas = null;
+        lightningCtx = null;
+    }
+    
+    console.log("⚡ Sistema de rayos limpiado completamente");
+}
+
+// --- FUNCIONES DE EFECTOS VISUALES PARA COMBOS ELÉCTRICOS ---
+
+function createElectricComboEffect(cellsToClear, comboLevel) {
+    if (!cellsToClear || cellsToClear.size === 0) return;
+    
+    // Crear efectos de cadena eléctrica entre celdas
+    const cellsArray = Array.from(cellsToClear);
+    for (let i = 0; i < cellsArray.length - 1; i++) {
+        const cell1 = cellsArray[i];
+        const cell2 = cellsArray[i + 1];
+        
+        if (cell1.element && cell2.element) {
+            createElectricChainEffect(cell1.element, cell2.element);
+        }
+    }
+    
+    // Crear partículas especiales según el nivel del combo
+    cellsArray.forEach(cellData => {
+        if (cellData.element) {
+            createElectricDischargeEffect(cellData.element, comboLevel);
+        }
+    });
+}
+
+function createElectricChainEffect(element1, element2) {
+    if (!element1 || !element2 || !lightningCanvas || !lightningCtx) return;
+    
+    const rect1 = element1.getBoundingClientRect();
+    const rect2 = element2.getBoundingClientRect();
+    
+    const x1 = rect1.left + rect1.width / 2;
+    const y1 = rect1.top + rect1.height / 2;
+    const x2 = rect2.left + rect2.width / 2;
+    const y2 = rect2.top + rect2.height / 2;
+    
+    // Crear rayo dorado conectando las celdas
+    const chainBolt = new LightningBolt(x1, y1, x2, y2);
+    chainBolt.color = '#FFD700'; // Dorado para combos
+    chainBolt.thickness = 4;
+    lightningEffects.push(chainBolt);
+}
+
+function createElectricDischargeEffect(cellElement, intensity = 1) {
+    if (!cellElement) return;
+    
+    // Añadir clase de descarga eléctrica
+    cellElement.classList.add('electric-discharge');
+    setTimeout(() => {
+        cellElement.classList.remove('electric-discharge');
+    }, 300);
+    
+    // Crear partículas eléctricas
+    const rect = cellElement.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    
+    for (let i = 0; i < 10 * intensity; i++) {
+        lightningParticles.push(new ElectricParticle(
+            centerX + (Math.random() - 0.5) * 30,
+            centerY + (Math.random() - 0.5) * 30,
+            'glow'
+        ));
+    }
+}
+
+function showElectricBonusMessage(message, referenceElement) {
+    if (!referenceElement) return;
+    
+    const messageElement = document.createElement('div');
+    messageElement.className = 'electric-bonus-message';
+    messageElement.textContent = message;
+    
+    // Posicionar el mensaje
+    const rect = referenceElement.getBoundingClientRect();
+    messageElement.style.left = (rect.left + rect.width / 2) + 'px';
+    messageElement.style.top = (rect.top - 20) + 'px';
+    messageElement.style.transform = 'translateX(-50%)';
+    
+    document.body.appendChild(messageElement);
+    
+    // Remover después de la animación
+    setTimeout(() => {
+        if (messageElement.parentNode) {
+            messageElement.parentNode.removeChild(messageElement);
+        }
+    }, 2000);
+}
+
+function createElectricStormScreenEffect() {
+    // Efecto de vibración de pantalla
+    if (gameContainerElement) {
+        gameContainerElement.classList.add('electric-storm-shake');
+        setTimeout(() => {
+            gameContainerElement.classList.remove('electric-storm-shake');
+        }, 800);
+    }
+    
+    // Flash eléctrico dorado
+    if (lightningCanvas && lightningCtx) {
+        lightningCtx.save();
+        lightningCtx.fillStyle = 'rgba(255, 215, 0, 0.6)'; // Dorado
+        lightningCtx.fillRect(0, 0, lightningCanvas.width, lightningCanvas.height);
+        lightningCtx.restore();
+        
+        setTimeout(() => {
+            if (lightningCtx) {
+                lightningCtx.clearRect(0, 0, lightningCanvas.width, lightningCanvas.height);
+            }
+        }, 150);
+    }
+    
+    // Crear múltiples rayos dorados desde los bordes
+    for (let i = 0; i < 5; i++) {
+        setTimeout(() => {
+            const startX = Math.random() * window.innerWidth;
+            const startY = -50;
+            const endX = Math.random() * window.innerWidth;
+            const endY = window.innerHeight + 50;
+            
+            const stormBolt = new LightningBolt(startX, startY, endX, endY);
+            stormBolt.color = '#FFD700';
+            stormBolt.thickness = 6;
+            lightningEffects.push(stormBolt);
+        }, i * 100);
+    }
+}
+
+// --- CLASES PARA EFECTOS DE RAYOS ELÉCTRICOS ---
+
+class LightningBolt {
+    constructor(startX, startY, endX, endY) {
+        this.startX = startX;
+        this.startY = startY;
+        this.endX = endX;
+        this.endY = endY;
+        this.segments = [];
+        this.life = 30; // Duración del rayo en frames
+        this.maxLife = 30;
+        this.thickness = Math.random() * 3 + 2;
+        this.color = `hsl(${200 + Math.random() * 60}, 100%, ${70 + Math.random() * 30}%)`;
+        this.generateSegments();
+    }
+    
+    generateSegments() {
+        const distance = Math.sqrt((this.endX - this.startX) ** 2 + (this.endY - this.startY) ** 2);
+        const numSegments = Math.floor(distance / 20) + 3;
+        
+        this.segments = [];
+        for (let i = 0; i <= numSegments; i++) {
+            const t = i / numSegments;
+            const x = this.startX + (this.endX - this.startX) * t;
+            const y = this.startY + (this.endY - this.startY) * t;
+            
+            // Añadir variación aleatoria excepto en los extremos
+            const offsetX = (i === 0 || i === numSegments) ? 0 : (Math.random() - 0.5) * 40;
+            const offsetY = (i === 0 || i === numSegments) ? 0 : (Math.random() - 0.5) * 20;
+            
+            this.segments.push({ x: x + offsetX, y: y + offsetY });
+        }
+        
+        // Añadir ramificaciones
+        this.branches = [];
+        for (let i = 1; i < this.segments.length - 1; i++) {
+            if (Math.random() < 0.3) { // 30% de probabilidad de ramificación
+                const segment = this.segments[i];
+                const branchLength = Math.random() * 50 + 20;
+                const branchAngle = (Math.random() - 0.5) * Math.PI;
+                
+                this.branches.push({
+                    startX: segment.x,
+                    startY: segment.y,
+                    endX: segment.x + Math.cos(branchAngle) * branchLength,
+                    endY: segment.y + Math.sin(branchAngle) * branchLength,
+                    thickness: this.thickness * 0.6
+                });
+            }
+        }
+    }
+    
+    update() {
+        this.life--;
+        // Regenerar ocasionalmente para efecto de parpadeo
+        if (Math.random() < 0.3) {
+            this.generateSegments();
+        }
+        return this.life > 0;
+    }
+    
+    draw() {
+        if (!lightningCtx) return;
+        
+        const alpha = this.life / this.maxLife;
+        lightningCtx.save();
+        lightningCtx.globalAlpha = alpha;
+        lightningCtx.strokeStyle = this.color;
+        lightningCtx.lineWidth = this.thickness;
+        lightningCtx.lineCap = 'round';
+        lightningCtx.shadowColor = this.color;
+        lightningCtx.shadowBlur = 10;
+        
+        // Dibujar rayo principal
+        lightningCtx.beginPath();
+        if (this.segments.length > 0) {
+            lightningCtx.moveTo(this.segments[0].x, this.segments[0].y);
+            for (let i = 1; i < this.segments.length; i++) {
+                lightningCtx.lineTo(this.segments[i].x, this.segments[i].y);
+            }
+        }
+        lightningCtx.stroke();
+        
+        // Dibujar ramificaciones
+        this.branches.forEach(branch => {
+            lightningCtx.lineWidth = branch.thickness;
+            lightningCtx.beginPath();
+            lightningCtx.moveTo(branch.startX, branch.startY);
+            lightningCtx.lineTo(branch.endX, branch.endY);
+            lightningCtx.stroke();
+        });
+        
+        lightningCtx.restore();
+    }
+}
+
+class ElectricParticle {
+    constructor(x, y, type = 'spark') {
+        this.x = x;
+        this.y = y;
+        this.type = type; // 'spark', 'glow', 'arc'
+        this.speedX = (Math.random() - 0.5) * 4;
+        this.speedY = (Math.random() - 0.5) * 4;
+        this.life = Math.random() * 60 + 30;
+        this.maxLife = this.life;
+        this.size = Math.random() * 3 + 1;
+        this.color = `hsl(${190 + Math.random() * 80}, 100%, ${60 + Math.random() * 40}%)`;
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotationSpeed = (Math.random() - 0.5) * 0.2;
+    }
+    
+    update() {
+        this.life--;
+        this.x += this.speedX;
+        this.y += this.speedY;
+        this.speedX *= 0.98; // Fricción
+        this.speedY *= 0.98;
+        this.rotation += this.rotationSpeed;
+        
+        // Efecto de gravedad ligera para chispas
+        if (this.type === 'spark') {
+            this.speedY += 0.1;
+        }
+        
+        return this.life > 0;
+    }
+    
+    draw() {
+        if (!lightningCtx) return;
+        
+        const alpha = this.life / this.maxLife;
+        lightningCtx.save();
+        lightningCtx.globalAlpha = alpha;
+        lightningCtx.translate(this.x, this.y);
+        lightningCtx.rotate(this.rotation);
+        
+        if (this.type === 'spark') {
+            lightningCtx.fillStyle = this.color;
+            lightningCtx.shadowColor = this.color;
+            lightningCtx.shadowBlur = 5;
+            lightningCtx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+        } else if (this.type === 'glow') {
+            const gradient = lightningCtx.createRadialGradient(0, 0, 0, 0, 0, this.size);
+            gradient.addColorStop(0, this.color);
+            gradient.addColorStop(1, 'transparent');
+            lightningCtx.fillStyle = gradient;
+            lightningCtx.fillRect(-this.size, -this.size, this.size * 2, this.size * 2);
+        }
+        
+        lightningCtx.restore();
+    }
+}
+
+class LightningImpactEffect {
+    constructor(x, y, intensity = 1) {
+        this.x = x;
+        this.y = y;
+        this.intensity = intensity;
+        this.life = 60;
+        this.maxLife = 60;
+        this.rings = [];
+        this.particles = [];
+        
+        // Crear anillos de onda expansiva
+        for (let i = 0; i < 3; i++) {
+            this.rings.push({
+                radius: 0,
+                maxRadius: 50 + i * 20,
+                speed: 2 + i * 0.5,
+                thickness: 3 - i * 0.5,
+                delay: i * 5
+            });
+        }
+        
+        // Crear partículas de impacto
+        for (let i = 0; i < 20 * intensity; i++) {
+            this.particles.push(new ElectricParticle(x, y, Math.random() < 0.7 ? 'spark' : 'glow'));
+        }
+    }
+    
+    update() {
+        this.life--;
+        
+        // Actualizar anillos
+        this.rings.forEach(ring => {
+            if (ring.delay <= 0) {
+                ring.radius += ring.speed;
+            } else {
+                ring.delay--;
+            }
+        });
+        
+        // Actualizar partículas
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            if (!this.particles[i].update()) {
+                this.particles.splice(i, 1);
+            }
+        }
+        
+        return this.life > 0 || this.particles.length > 0;
+    }
+    
+    draw() {
+        if (!lightningCtx) return;
+        
+        const alpha = Math.min(1, this.life / this.maxLife);
+        
+        // Dibujar anillos de onda expansiva
+        lightningCtx.save();
+        lightningCtx.globalAlpha = alpha;
+        
+        this.rings.forEach(ring => {
+            if (ring.radius > 0 && ring.radius < ring.maxRadius) {
+                const ringAlpha = 1 - (ring.radius / ring.maxRadius);
+                lightningCtx.globalAlpha = alpha * ringAlpha;
+                lightningCtx.strokeStyle = `hsl(220, 100%, 80%)`;
+                lightningCtx.lineWidth = ring.thickness;
+                lightningCtx.shadowColor = `hsl(220, 100%, 80%)`;
+                lightningCtx.shadowBlur = 10;
+                
+                lightningCtx.beginPath();
+                lightningCtx.arc(this.x, this.y, ring.radius, 0, Math.PI * 2);
+                lightningCtx.stroke();
+            }
+        });
+        
+        lightningCtx.restore();
+        
+        // Dibujar partículas
+        this.particles.forEach(particle => particle.draw());
+    }
+}
+
+// --- EVENT LISTENER ESENCIAL PARA ENTRADA A NIVELES ---
+
+// Event listener para el botón de confirmación del modal de objetivo inicial
+if (objectiveStartConfirmButtonElement) {
+    objectiveStartConfirmButtonElement.addEventListener('click', () => {
+        console.log("Botón ¡Entendido! presionado - cerrando modal de objetivo");
+        
+        // Ocultar el modal
+        if (levelObjectiveStartModalElement) {
+            levelObjectiveStartModalElement.classList.remove('visible');
+            levelObjectiveStartModalElement.classList.add('hidden');
+        }
+        
+        // Ejecutar la continuación si existe
+        if (typeof levelInitializationContinuation === 'function') {
+            console.log("Ejecutando continuación de inicialización del nivel");
+            levelInitializationContinuation();
+            levelInitializationContinuation = null; // Limpiar después de usar
+        } else {
+            console.error("No hay función de continuación definida");
+        }
+    });
+} else {
+    console.error("objectiveStartConfirmButtonElement no encontrado en el DOM");
 }

@@ -1090,4 +1090,324 @@
         transform: scale(1.2);
         box-shadow: 0 0 12px rgba(255, 215, 0, 1);
     }
+}
+
+/* Estilos para efectos de rayos eléctricos - Nivel 5 */
+
+/* Canvas de rayos */
+#lightningCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 1000;
+}
+
+/* Celdas electrificadas */
+.cell.electrified {
+    background: linear-gradient(45deg, #00ffff, #0080ff, #00ffff) !important;
+    background-size: 200% 200% !important;
+    animation: electricPulse 1s ease-in-out infinite alternate !important;
+    box-shadow: 0 0 15px #00ffff, inset 0 0 15px rgba(0, 255, 255, 0.3) !important;
+    border: 2px solid #00ffff !important;
+}
+
+.cell.electrified.disabled {
+    background: linear-gradient(45deg, #ff8844, #ffaa66, #ff8844) !important;
+    background-size: 200% 200% !important;
+    animation: electricPulseDisabled 1s ease-in-out infinite alternate !important;
+    box-shadow: 0 0 15px #ff8844, inset 0 0 15px rgba(255, 136, 68, 0.3) !important;
+    border: 2px solid #ff8844 !important;
+    cursor: not-allowed !important;
+}
+
+/* Animaciones eléctricas */
+@keyframes electricPulse {
+    0% {
+        background-position: 0% 50%;
+        box-shadow: 0 0 15px #00ffff, inset 0 0 15px rgba(0, 255, 255, 0.3);
+    }
+    100% {
+        background-position: 100% 50%;
+        box-shadow: 0 0 25px #00ffff, inset 0 0 25px rgba(0, 255, 255, 0.5);
+    }
+}
+
+@keyframes electricPulseDisabled {
+    0% {
+        background-position: 0% 50%;
+        box-shadow: 0 0 15px #ff8844, inset 0 0 15px rgba(255, 136, 68, 0.3);
+    }
+    100% {
+        background-position: 100% 50%;
+        box-shadow: 0 0 25px #ff8844, inset 0 0 25px rgba(255, 136, 68, 0.5);
+    }
+}
+
+/* Advertencia de rayo */
+.lightning-warning {
+    position: relative !important;
+    background: radial-gradient(circle, rgba(255, 255, 100, 0.9), rgba(255, 255, 0, 0.6), rgba(255, 200, 0, 0.3)) !important;
+    border: 3px solid #ffff00 !important;
+    border-radius: 8px !important;
+    animation: lightningWarningPulse 0.4s ease-in-out infinite alternate !important;
+    z-index: 999 !important;
+    pointer-events: none !important;
+    box-shadow: 
+        0 0 20px rgba(255, 255, 0, 0.8),
+        inset 0 0 10px rgba(255, 255, 255, 0.3) !important;
+}
+
+@keyframes lightningWarningPulse {
+    0% {
+        transform: scale(0.95);
+        opacity: 0.7;
+        box-shadow: 
+            0 0 15px rgba(255, 255, 0, 0.6),
+            inset 0 0 8px rgba(255, 255, 255, 0.2);
+    }
+    100% {
+        transform: scale(1.05);
+        opacity: 1;
+        box-shadow: 
+            0 0 30px rgba(255, 255, 0, 1),
+            inset 0 0 15px rgba(255, 255, 255, 0.4);
+    }
+}
+
+/* Efectos de descarga eléctrica */
+.cell.electric-discharge {
+    animation: electricDischarge 1s ease-out !important;
+}
+
+@keyframes electricDischarge {
+    0% {
+        background: #ffffff !important;
+        box-shadow: 0 0 30px #00ffff !important;
+        transform: scale(1);
+    }
+    25% {
+        background: #00ffff !important;
+        box-shadow: 0 0 50px #00ffff !important;
+        transform: scale(1.1);
+    }
+    50% {
+        background: #ffffff !important;
+        box-shadow: 0 0 40px #ffff00 !important;
+        transform: scale(1.05);
+    }
+    75% {
+        background: #ffff00 !important;
+        box-shadow: 0 0 30px #ffff00 !important;
+        transform: scale(1.02);
+    }
+    100% {
+        box-shadow: 0 0 10px #00ffff !important;
+        transform: scale(1);
+    }
+}
+
+/* Mensaje de bonus eléctrico */
+.electric-bonus-message {
+    font-family: 'Arial Black', Arial, sans-serif !important;
+    font-size: 18px !important;
+    font-weight: bold !important;
+    color: #FFD700 !important;
+    text-shadow: 
+        0 0 10px #FFD700,
+        0 0 20px #FFD700,
+        0 0 30px #FFD700,
+        2px 2px 4px rgba(0, 0, 0, 0.8) !important;
+    z-index: 10000 !important;
+    pointer-events: none !important;
+    user-select: none !important;
+}
+
+@keyframes electricBonusFloat {
+    0% {
+        opacity: 1;
+        transform: translate(-50%, -100%) scale(0.8);
+    }
+    20% {
+        opacity: 1;
+        transform: translate(-50%, -120%) scale(1.2);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -200%) scale(0.6);
+    }
+}
+
+/* Efecto de tormenta eléctrica en pantalla */
+.electric-storm-shake {
+    animation: electricStormShake 0.8s ease-in-out !important;
+}
+
+@keyframes electricStormShake {
+    0%, 100% { transform: translate(0, 0) rotate(0deg); }
+    10% { transform: translate(-2px, -1px) rotate(-0.5deg); }
+    20% { transform: translate(2px, 1px) rotate(0.5deg); }
+    30% { transform: translate(-1px, 2px) rotate(-0.3deg); }
+    40% { transform: translate(1px, -2px) rotate(0.3deg); }
+    50% { transform: translate(-2px, 1px) rotate(-0.4deg); }
+    60% { transform: translate(2px, -1px) rotate(0.4deg); }
+    70% { transform: translate(-1px, -2px) rotate(-0.2deg); }
+    80% { transform: translate(1px, 2px) rotate(0.2deg); }
+    90% { transform: translate(-1px, -1px) rotate(-0.1deg); }
+}
+
+/* Nubes de tormenta */
+.storm-clouds {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: linear-gradient(
+        to bottom,
+        rgba(30, 30, 50, 0.8) 0%,
+        rgba(50, 50, 70, 0.6) 30%,
+        transparent 60%
+    ) !important;
+    z-index: 500 !important;
+    pointer-events: none !important;
+    animation: stormCloudsGather 3s ease-in-out !important;
+}
+
+@keyframes stormCloudsGather {
+    0% {
+        opacity: 0;
+        transform: translateY(-100%);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Efectos de tiempo para Nivel 5 */
+#time-remaining-display {
+    font-weight: bold;
+    transition: color 0.3s ease;
+}
+
+#time-remaining-display.warning {
+    color: #ffaa00 !important;
+    animation: timeWarning 1s ease-in-out infinite alternate;
+}
+
+#time-remaining-display.critical {
+    color: #ff4444 !important;
+    font-weight: bold !important;
+    animation: timeCritical 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes timeWarning {
+    0% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+@keyframes timeCritical {
+    0% { 
+        opacity: 0.5; 
+        transform: scale(1);
+    }
+    100% { 
+        opacity: 1; 
+        transform: scale(1.1);
+    }
+}
+
+/* Partículas eléctricas */
+.electric-particle {
+    position: absolute !important;
+    pointer-events: none !important;
+    z-index: 2000 !important;
+    border-radius: 50% !important;
+    animation: electricParticleFloat 2s ease-out forwards !important;
+}
+
+@keyframes electricParticleFloat {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(0.3) translateY(-50px);
+    }
+}
+
+/* Mejoras para el tablero durante tormentas eléctricas */
+.board.electric-storm {
+    box-shadow: 0 0 30px rgba(0, 255, 255, 0.5) !important;
+    border: 2px solid rgba(0, 255, 255, 0.3) !important;
+}
+
+.game-container.lightning-active {
+    filter: brightness(0.8) contrast(1.2) !important;
+    transition: filter 0.5s ease-in-out !important;
+}
+
+.electrified-zone-indicator {
+    position: absolute !important;
+    background: rgba(255, 255, 0, 0.3) !important;
+    border: 2px dashed #ffff00 !important;
+    animation: electrifiedZonePulse 2s ease-in-out infinite !important;
+    pointer-events: none !important;
+    z-index: 998 !important;
+}
+
+@keyframes electrifiedZonePulse {
+    0% {
+        opacity: 0.3;
+        transform: scale(0.95);
+    }
+    50% {
+        opacity: 0.7;
+        transform: scale(1.05);
+    }
+    100% {
+        opacity: 0.3;
+        transform: scale(0.95);
+    }
+}
+
+/* Nubes de tormenta mejoradas */
+#storm-clouds-overlay {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: linear-gradient(
+        to bottom,
+        rgba(30, 30, 50, 0.8) 0%,
+        rgba(50, 50, 70, 0.6) 30%,
+        rgba(70, 70, 90, 0.4) 50%,
+        transparent 70%
+    ) !important;
+    z-index: 500 !important;
+    pointer-events: none !important;
+    animation: stormCloudsGather 2s ease-in-out !important;
+    transition: opacity 1s ease-out !important;
+    display: none !important;
+}
+
+/* Efecto de rumble de tormenta */
+.storm-rumble {
+    animation: stormRumble 2s ease-in-out !important;
+}
+
+@keyframes stormRumble {
+    0%, 100% { transform: translate(0, 0); }
+    10% { transform: translate(-0.5px, -0.5px); }
+    20% { transform: translate(0.5px, 0.5px); }
+    30% { transform: translate(-0.3px, 0.3px); }
+    40% { transform: translate(0.3px, -0.3px); }
+    50% { transform: translate(-0.4px, 0.4px); }
+    60% { transform: translate(0.4px, -0.4px); }
+    70% { transform: translate(-0.2px, -0.2px); }
+    80% { transform: translate(0.2px, 0.2px); }
+    90% { transform: translate(-0.1px, -0.1px); }
 } 
