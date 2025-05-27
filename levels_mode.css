@@ -101,49 +101,362 @@
     margin-top: 20px; /* Espacio arriba del botón de volver */
 }
 
-/* Estilos para mostrar un objetivo de nivel dentro del game-area */
-#level-info-display {
-    position: absolute; /* Relativo al game-container si se inserta ahí, o game-area si se mueve */
-    top: -80px; /* Ajusta este valor para moverlo más arriba, fuera del game-container */
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: rgba(0, 0, 0, 0.75); /* Un poco más oscuro para contraste */
-    color: white;
+/* ---- MODAL DE OBJETIVO INICIAL ---- */
+#levelObjectiveStartModal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000; /* Por encima de todo */
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+}
+
+#levelObjectiveStartModal.visible {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.3s ease;
+}
+
+#levelObjectiveStartModal .modal-content {
+    background: linear-gradient(to bottom right, #4b3f70, #6a5a8a);
+    padding: 25px 35px;
+    border-radius: 12px;
+    box-shadow: 0 7px 25px rgba(0,0,0,0.4);
+    text-align: center;
+    color: #f0f0f0;
+    transform: scale(0.95);
+    transition: transform 0.3s ease-out;
+    max-width: 500px;
+    width: 90%;
+}
+
+#levelObjectiveStartModal.visible .modal-content {
+    transform: scale(1);
+}
+
+#levelObjectiveStartModal h2 {
+    margin-top: 0;
+    color: #FFEB3B;
+    font-size: 1.9em;
+    margin-bottom: 15px;
+}
+
+#levelObjectiveStartModal p {
+    font-size: 1.15em;
+    line-height: 1.5;
+    margin-bottom: 25px;
+    color: #d8d8d8;
+}
+
+#levelObjectiveStartModal button {
+    background-color: #f9ca24; /* Amarillo vibrante */
+    color: #333;
+    border: none;
     padding: 10px 20px;
+    font-size: 1.05em;
+    font-weight: bold;
     border-radius: 8px;
-    font-size: 1.1em; /* Un poco más grande */
-    z-index: 100; 
-    box-shadow: 0 3px 7px rgba(0,0,0,0.4);
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+#levelObjectiveStartModal button:hover {
+    background-color: #f6e58d;
+    transform: translateY(-2px);
+}
+
+/* ---- REDISEÑO DEL DISPLAY DE INFO PERSISTENTE ---- */
+#level-info-display {
+    position: static; /* Lo sacamos de absolute para que fluya normalmente */
+    transform: none; /* Resetear transform si lo tenía */
+    background-color: rgba(0, 0, 0, 0.35); /* Fondo sutil */
+    color: white;
+    padding: 8px 15px;
+    border-radius: 6px;
+    font-size: 0.95em; /* Más pequeño */
+    z-index: auto; /* No necesita z-index alto ahora */
+    box-shadow: 0 2px 5px rgba(0,0,0,0.25);
     width: auto; /* Ancho basado en contenido */
-    min-width: 280px; /* Ancho mínimo para que no se vea muy pequeño */
-    max-width: 90%; /* Para que no sea demasiado ancho en pantallas pequeñas */
-    text-align: center; /* Centrar texto interno */
+    max-width: 300px; /* Máximo ancho para que no se desborde */
+    text-align: center; 
+    margin: 0 auto 15px auto; /* Centrado y con margen inferior antes del tablero */
+    /* Ya no es 'absolute', así que 'top' y 'left' no aplican como antes */
+    /* Se insertará antes del game-container o donde se decida en el HTML/JS */
 }
 
 #level-info-display p {
-    margin: 3px 0;
+    margin: 2px 0; /* Reducir margen entre párrafos si hay múltiples */
+    font-size: 1em; /* Ajustar si es necesario */
 }
 
 #level-info-display .info-label {
     font-weight: bold;
-    color: #FFEB3B;
+    color: #FFEB3B; /* Amarillo para las etiquetas */
 }
 
-/* Por ejemplo:
-.level-objective-display {
-  padding: 10px;
-  background-color: rgba(0,0,0,0.2);
-  border-radius: 5px;
-  margin-bottom: 15px;
+#level-info-display span { /* Para los contadores */
+    color: #fff; /* Blanco para los valores */
+    font-weight: normal;
 }
 
-.level-objective-display h4 {
-  margin-top: 0;
-  color: #FFD700;
+/* Estilos para el Modal de Victoria de Nivel */
+
+/* Contenedor principal del modal (la superposición) */
+#levelVictoryModal {
+    position: fixed; /* Clave para superponer */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7); /* Fondo oscuro semitransparente */
+    display: flex; /* Para centrar el contenido del modal */
+    align-items: center;
+    justify-content: center;
+    z-index: 2000; /* Debe estar por encima de otros contenidos */
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 
+#levelVictoryModal.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Contenido del modal (la caja con el mensaje) */
+#levelVictoryModal .modal-content {
+    background: linear-gradient(to bottom right, #524079, #775a8a); /* Similar al gameOverModal */
+    padding: 30px 40px;
+    border-radius: 15px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+    text-align: center;
+    color: #ffffff; 
+    transform: scale(0.9);
+    transition: transform 0.3s ease-out;
+}
+
+#levelVictoryModal.visible .modal-content {
+    transform: scale(1);
+}
+
+#levelVictoryModal h2 {
+    margin-top: 0;
+    color: #FFEB3B; /* Amarillo, como otros títulos de modal */
+    font-size: 2.5em;
+    margin-bottom: 15px;
+}
+
+#levelVictoryModal p {
+    font-size: 1.2em; /* Ajustar según necesidad */
+    margin-bottom: 15px;
+}
+
+#levelVictoryModal #levelVictoryMessage {
+    font-size: 1.4em;
+    font-style: italic;
+    margin-bottom: 20px;
+}
+
+#levelVictoryModal .stars-container {
+    display: flex;
+    justify-content: center;
+    margin: 20px 0;
+}
+
+#levelVictoryModal .stars-container .star {
+    font-size: 3em; /* Tamaño de las estrellas */
+    color: #777; /* Color de estrella vacía más oscuro que el anterior*/
+    margin: 0 8px;
+    transition: color 0.3s ease-in-out, transform 0.3s ease-in-out;
+}
+
+#levelVictoryModal .stars-container .star.filled {
+    color: #ffd700; /* Color de estrella llena (dorado) */
+    transform: scale(1.1);
+}
+
+#levelVictoryModal .modal-buttons {
+    margin-top: 25px;
+}
+
+#levelVictoryModal .modal-buttons button {
+    /* Heredará los estilos de .btn si los tienes definidos de forma global
+       o de .action-button / .secondary-action-button si usas esas clases.
+       Si no, define estilos base aquí o usa los de #restartGameButton como referencia */
+    padding: 12px 25px;
+    font-size: 1.1em;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+    margin: 5px;
+    border: none;
+}
+
+#levelVictoryModal #nextLevelButton {
+    background-color: #4CAF50; /* Verde */
+    color: white;
+}
+#levelVictoryModal #nextLevelButton:hover {
+    background-color: #45a049;
+    transform: translateY(-2px);
+}
+
+#levelVictoryModal #levelVictoryBackToSelectionButton {
+    background-color: #008CBA; /* Azul */
+    color: white;
+}
+
+#levelVictoryModal #levelVictoryBackToSelectionButton:hover {
+    background-color: #007ba7;
+    transform: translateY(-2px);
+}
+
+/* Asegúrate que las clases .modal y .hidden estén definidas globalmente (en style.css)
+   o defínelas aquí si son específicas para este modal también.
+   Por ejemplo:
+.modal.hidden {
+    display: none !important; 
+}
+.modal.visible {
+    display: flex; 
+    opacity: 1; 
+    visibility: visible; 
+}
+*/
+
+/* Estilos para Celdas Congeladas */
 .frozen-cell {
-  background-image: url('path/to/ice_texture.png');
-  opacity: 0.7;
+    /* Estilo base para cualquier celda congelada, si es necesario */
+    /* Podría tener un borde sutil o un efecto general */
+    box-shadow: inset 0 0 5px rgba(173, 216, 230, 0.7); /* Sombra interior azul claro como hielo */
 }
-*/ 
+
+.frozen-stage-3 { /* Totalmente congelada */
+    background-color: #ADD8E6; /* Azul claro */
+    background-image: repeating-linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.3) 0px,
+        rgba(255, 255, 255, 0.3) 3px,
+        transparent 3px,
+        transparent 6px
+    ); /* Rayas diagonales blancas sutiles */
+    border: 2px solid #87CEEB; /* Borde azul cielo */
+    opacity: 0.9;
+}
+
+.frozen-stage-2 { /* Medianamente congelada */
+    background-color: #B0E0E6; /* Azul polvo */
+    background-image: repeating-linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.2) 0px,
+        rgba(255, 255, 255, 0.2) 2px,
+        transparent 2px,
+        transparent 4px
+    ); /* Rayas más finas o menos opacas */
+    border: 1px solid #ADD8E6;
+    opacity: 0.75;
+}
+
+.frozen-stage-1 { /* Poco congelada */
+    background-color: #C6E2FF; /* Azul claro muy pálido */
+    border: 1px dashed #B0E0E6; /* Borde discontinuo */
+    opacity: 0.6;
+}
+
+/* Cuando una celda congelada es parte de la pieza actual que se está colocando,
+   no debería tener los estilos de congelamiento, sino el color de la pieza.
+   La lógica JS se encargará de esto. */
+
+/* Estilos específicos para el Modal de Game Over en Modo Niveles */
+#gameOverModal.levels-game-over-active {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.75); /* Fondo oscuro semitransparente más pronunciado */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2500; /* Muy alto para estar sobre todo, incluso el modal de victoria si es necesario */
+    opacity: 0;
+    visibility: hidden;
+    /* Transiciones ya definidas en #gameOverModal y #gameOverModal.visible, pero podemos asegurar especificidad */
+    transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+}
+
+#gameOverModal.levels-game-over-active.visible {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.3s ease;
+}
+
+#gameOverModal.levels-game-over-active .modal-content {
+    background-color: #4a3f70; /* Tono oscuro púrpura/azul */
+    padding: 35px 45px; /* Un poco más de padding */
+    border-radius: 15px;
+    text-align: center;
+    color: #e8e8e8;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    transform: scale(0.9);
+    transition: transform 0.3s ease-out;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#gameOverModal.levels-game-over-active.visible .modal-content {
+    transform: scale(1);
+}
+
+#gameOverModal.levels-game-over-active h2 {
+    color: #ff6b6b; /* Un rojo suave para "Nivel Fallido" */
+    margin-top: 0;
+    margin-bottom: 18px;
+    font-size: 2.4em;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+#gameOverModal.levels-game-over-active p#finalScore { /* Seleccionar el p del puntaje específico */
+    margin-bottom: 30px;
+    font-size: 1.4em;
+    color: #d0d0d0;
+}
+
+#gameOverModal.levels-game-over-active button#restartGameButton { /* Estilo específico para el botón en este contexto */
+    background-color: #feca57; /* Naranja suave */
+    color: #4b390b;
+    border: none;
+    padding: 14px 30px;
+    font-size: 1.15em;
+    font-weight: bold;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 5px 12px rgba(0,0,0,0.25);
+}
+
+#gameOverModal.levels-game-over-active button#restartGameButton:hover {
+    background-color: #ffda79; /* Naranja más claro */
+    transform: translateY(-3px);
+    box-shadow: 0 7px 15px rgba(0,0,0,0.3);
+}
+
+#gameOverModal.levels-game-over-active button#restartGameButton:active {
+    transform: translateY(0px);
+    background-color: #fdbf43;
+}
+
+/* ---- CLASE PARA PREVISUALIZACIÓN DE LÍNEAS COMPLETADAS ---- */
+.line-preview-highlight-levels {
+    background-color: rgba(144, 238, 144, 0.75) !important; /* Verde claro semitransparente */
+    /* Ajusta este color si es necesario */
+}
+
+/* ... (código existente de celdas congeladas) ... */ 

@@ -78,11 +78,37 @@
     </div>
   </div>
 
-  <div id="gameOverModal" class="modal-overlay hidden">
+  <div id="gameOverModal" class="modal hidden">
     <div class="modal-content">
       <h2 id="gameOverTitle">¡Juego Terminado!</h2>
       <p id="finalScore">Puntaje Final: 0</p>
-      <button id="restartGameButton">Volver al Inicio</button>
+      <div class="modal-buttons">
+        <button id="restartGameButton" class="btn">Volver a Empezar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="levelVictoryModal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="levelVictoryTitle">¡Nivel Superado!</h2>
+      <p id="levelVictoryMessage">¡Bien hecho!</p>
+      <div id="levelVictoryStars" class="stars-container">
+        <!-- Las estrellas se generarán aquí por JS -->
+      </div>
+      <p id="levelVictoryScore">Puntaje: 0</p>
+      <div class="modal-buttons">
+        <button id="nextLevelButton" class="btn">Siguiente Nivel</button>
+        <button id="levelVictoryBackToSelectionButton" class="btn">Elegir Nivel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Objetivo de Nivel (Inicio) -->
+  <div id="levelObjectiveStartModal" class="hidden">
+    <div class="modal-content">
+        <h2 id="objectiveStartTitle"></h2>
+        <p id="objectiveStartText"></p>
+        <button id="objectiveStartConfirmButton">¡Entendido!</button>
     </div>
   </div>
 
