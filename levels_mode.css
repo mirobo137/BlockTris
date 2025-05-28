@@ -1410,4 +1410,162 @@
     70% { transform: translate(-0.2px, -0.2px); }
     80% { transform: translate(0.2px, 0.2px); }
     90% { transform: translate(-0.1px, -0.1px); }
+}
+
+/* Efecto de destrucción por rayo */
+.lightning-destruction {
+    animation: lightningDestruction 0.5s ease-out !important;
+    z-index: 1500 !important;
+}
+
+@keyframes lightningDestruction {
+    0% {
+        background: #ffffff !important;
+        box-shadow: 0 0 40px #ff0000, 0 0 60px #ffff00 !important;
+        transform: scale(1);
+        opacity: 1;
+    }
+    25% {
+        background: #ff4444 !important;
+        box-shadow: 0 0 60px #ff0000, 0 0 80px #ffff00 !important;
+        transform: scale(1.2);
+        opacity: 0.9;
+    }
+    50% {
+        background: #ffff00 !important;
+        box-shadow: 0 0 50px #ffff00, 0 0 70px #ff8800 !important;
+        transform: scale(1.1);
+        opacity: 0.7;
+    }
+    75% {
+        background: #ff8800 !important;
+        box-shadow: 0 0 30px #ff8800, 0 0 50px #ff0000 !important;
+        transform: scale(0.9);
+        opacity: 0.4;
+    }
+    100% {
+        background: transparent !important;
+        box-shadow: 0 0 10px #ff0000 !important;
+        transform: scale(0.8);
+        opacity: 0;
+    }
+}
+
+/* Efectos de tormenta eléctrica mejorados */
+.lightning-active {
+    position: relative;
+}
+
+.lightning-active::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle at center, rgba(0, 255, 255, 0.1) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 500;
+    animation: lightningAmbient 2s ease-in-out infinite alternate;
+}
+
+@keyframes lightningAmbient {
+    0% { opacity: 0.3; }
+    100% { opacity: 0.7; }
+}
+
+.lightning-warning {
+    position: relative;
+    animation: lightningWarningPulse 0.5s ease-in-out infinite alternate !important;
+    z-index: 1000 !important;
+}
+
+@keyframes lightningWarningPulse {
+    0% {
+        box-shadow: 0 0 20px rgba(255, 255, 0, 0.8), inset 0 0 20px rgba(255, 255, 0, 0.3);
+        background-color: rgba(255, 255, 0, 0.2) !important;
+    }
+    100% {
+        box-shadow: 0 0 40px rgba(255, 255, 0, 1), inset 0 0 30px rgba(255, 255, 0, 0.5);
+        background-color: rgba(255, 255, 0, 0.4) !important;
+    }
+}
+
+.lightning-shake {
+    animation: lightningShakeEffect 0.5s ease-in-out;
+}
+
+@keyframes lightningShakeEffect {
+    0%, 100% { transform: translateX(0); }
+    10% { transform: translateX(-3px) translateY(-2px); }
+    20% { transform: translateX(3px) translateY(2px); }
+    30% { transform: translateX(-2px) translateY(-1px); }
+    40% { transform: translateX(2px) translateY(1px); }
+    50% { transform: translateX(-1px) translateY(-1px); }
+    60% { transform: translateX(1px) translateY(1px); }
+    70% { transform: translateX(-1px) translateY(0px); }
+    80% { transform: translateX(1px) translateY(0px); }
+    90% { transform: translateX(0px) translateY(-1px); }
+}
+
+.storm-rumble {
+    animation: stormRumbleEffect 2s ease-in-out;
+}
+
+@keyframes stormRumbleEffect {
+    0%, 100% { transform: translateY(0); }
+    25% { transform: translateY(-1px); }
+    50% { transform: translateY(1px); }
+    75% { transform: translateY(-0.5px); }
+}
+
+/* Nubes de tormenta */
+.storm-clouds {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        to bottom,
+        rgba(20, 20, 40, 0.8) 0%,
+        rgba(40, 40, 60, 0.6) 30%,
+        rgba(60, 60, 80, 0.3) 60%,
+        transparent 100%
+    );
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0;
+    transition: opacity 1s ease-in-out;
+    display: none;
+}
+
+.storm-clouds::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 40%;
+    background: 
+        radial-gradient(ellipse 200px 100px at 20% 10%, rgba(30, 30, 50, 0.8) 0%, transparent 50%),
+        radial-gradient(ellipse 300px 150px at 60% 5%, rgba(25, 25, 45, 0.9) 0%, transparent 50%),
+        radial-gradient(ellipse 250px 120px at 80% 15%, rgba(35, 35, 55, 0.7) 0%, transparent 50%);
+    animation: cloudDrift 8s ease-in-out infinite alternate;
+}
+
+@keyframes cloudDrift {
+    0% { transform: translateX(-10px); }
+    100% { transform: translateX(10px); }
+}
+
+/* Canvas de efectos eléctricos */
+#lightningCanvas {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    pointer-events: none !important;
+    z-index: 1500 !important;
 } 

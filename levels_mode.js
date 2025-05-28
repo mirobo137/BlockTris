@@ -57,6 +57,14 @@ let currentLightningTarget = null; // Objetivo actual del rayo
 let lightningComboMultiplier = 1; // Multiplicador de combo eléctrico
 let electricalSoundEnabled = true; // Control de sonidos eléctricos
 
+// --- NUEVAS VARIABLES PARA EFECTOS DE ZONA ELECTRIFICADA ---
+let electrifiedZoneEffects = []; // Array de efectos de zona electrificada
+let electrifiedZoneParticles = []; // Partículas específicas de zona electrificada
+let electrifiedArcs = []; // Arcos eléctricos entre celdas
+let destructionEffects = []; // Efectos de destrucción de piezas
+let stormIntensity = 1; // Intensidad de la tormenta (aumenta con el tiempo)
+let stormStartTime = 0; // Tiempo de inicio de la tormenta
+
 // --- CLASE PARA PIEZAS DE CEMENTO CAYENDO ---
 class FallingCementPiece {
     constructor(targetRow, targetCol) {
@@ -455,15 +463,15 @@ const levelsConfiguration = {
     5: { 
         id: 5, 
         name: "Nivel 5 - Tormenta Eléctrica", 
-        objectiveText: "Alcanza 1000 puntos en 90 segundos mientras rayos electrifican el tablero.", 
+        objectiveText: "Alcanza 1000 puntos en 60 segundos. Los rayos destruyen piezas en área 3x3.", 
         targetScore: 1000,
-        maxTimeSeconds: 90, // 90 segundos límite
-        lightningInterval: 20000, // Rayos cada 20 segundos
+        maxTimeSeconds: 60, // 60 segundos límite (reducido de 90)
+        lightningInterval: 10000, // Rayos cada 10 segundos (reducido de 20000)
         lightningWarningTime: 2000, // Advertencia de 2 segundos
-        electrifiedDuration: 8000, // Zonas electrificadas por 8 segundos
+        electrifiedDuration: 5000, // Zonas electrificadas por 5 segundos
         locked: false, // Desbloqueado para probar
         starCriteria: 'time',
-        starsThresholds: { threeStars: 60, twoStars: 75 } // 3 estrellas <= 60s, 2 estrellas <= 75s
+        starsThresholds: { threeStars: 40, twoStars: 50 } // 3 estrellas <= 40s, 2 estrellas <= 50s (ajustado para el nuevo tiempo)
     },
     // ... más niveles
 };
@@ -921,12 +929,12 @@ function canPlacePiece_levels(pieceMatrix, startRow, startCol) {
                     return false; 
                 }
                 
-                // NUEVA VERIFICACIÓN: Zonas electrificadas inhabilitadas
+                // VERIFICACIÓN MEJORADA: Zonas electrificadas inhabilitadas
                 const cellKey = `${boardR}-${boardC}`;
                 if (electrifiedCells.has(cellKey)) {
                     const electrifiedData = electrifiedCells.get(cellKey);
-                    // Solo bloquear si es una zona vacía electrificada (no una pieza existente electrificada)
-                    if (!electrifiedData.hasExistingPiece && Date.now() < electrifiedData.endTime) {
+                    // Verificar si la electrificación sigue activa
+                    if (Date.now() < electrifiedData.endTime) {
                         console.log(`🚫 Celda [${boardR}, ${boardC}] bloqueada por electrificación hasta`, new Date(electrifiedData.endTime).toLocaleTimeString());
                         return false;
                     }
@@ -1200,6 +1208,8 @@ async function checkAndClearLines_levels() {
         }
         
         // --- SISTEMA DE COMBO ELÉCTRICO PARA NIVEL 5 ---
+        // COMENTADO TEMPORALMENTE - PARA USO FUTURO
+        /*
         if (currentSelectedLevelId === 5 && cellsToClearLogically.size > 0) {
             let electrifiedCellsInLines = 0;
             
@@ -1247,6 +1257,7 @@ async function checkAndClearLines_levels() {
                 console.log(`🌩️ Combo eléctrico: ${electrifiedCellsInLines} celdas electrificadas, bonus: +${electricBonus}`);
             }
         }
+        */
         
         console.log(`PARTICLE DEBUG (levels): Celdas para partículas: ${cellElementsForParticles.length}`);
         cellElementsForParticles.forEach(item => {
@@ -1461,15 +1472,25 @@ function showInitialObjectiveModal(levelConfig, continuationCallback) {
 
 if (objectiveStartConfirmButtonElement) {
     objectiveStartConfirmButtonElement.addEventListener('click', () => {
+        console.log("Botón ¡Entendido! presionado - cerrando modal de objetivo");
+        
+        // Ocultar el modal
         if (levelObjectiveStartModalElement) {
             levelObjectiveStartModalElement.classList.remove('visible');
             levelObjectiveStartModalElement.classList.add('hidden');
         }
+        
+        // Ejecutar la continuación si existe
         if (typeof levelInitializationContinuation === 'function') {
+            console.log("Ejecutando continuación de inicialización del nivel");
             levelInitializationContinuation();
+            levelInitializationContinuation = null; // Limpiar después de usar
+        } else {
+            console.error("No hay función de continuación definida");
         }
-        levelInitializationContinuation = null;
     });
+} else {
+    console.error("objectiveStartConfirmButtonElement no encontrado en el DOM");
 }
 // --- FIN FUNCIÓN MODAL OBJETIVO ---
 
@@ -1843,6 +1864,11 @@ function initializeLevel(levelId) {
         // Inicializar sistema de rayos si es el Nivel 5
         if (levelConfig.id === 5 && levelConfig.lightningInterval) {
             startLightningStorm(levelConfig);
+            
+            // Ejecutar test del canvas después de un breve delay
+            setTimeout(() => {
+                testLightningCanvas();
+            }, 1000);
         }
 
         updateScreenVisibility();
@@ -2250,18 +2276,26 @@ function setupLightningCanvas() {
     if (!lightningCanvas) {
         lightningCanvas = document.createElement('canvas');
         lightningCanvas.id = 'lightningCanvas';
-        lightningCanvas.style.position = 'absolute';
+        lightningCanvas.style.position = 'fixed';
         lightningCanvas.style.top = '0';
         lightningCanvas.style.left = '0';
         lightningCanvas.style.pointerEvents = 'none';
-        lightningCanvas.style.zIndex = '1000';
+        lightningCanvas.style.zIndex = '1500';
+        lightningCanvas.style.background = 'transparent'; // Asegurar fondo transparente
         document.body.appendChild(lightningCanvas);
         lightningCtx = lightningCanvas.getContext('2d');
+        
+        console.log("Canvas de rayos creado y añadido al DOM");
     }
     
-    // Ajustar tamaño del canvas
+    // Ajustar tamaño del canvas al tamaño de la ventana
     lightningCanvas.width = window.innerWidth;
     lightningCanvas.height = window.innerHeight;
+    
+    // Asegurar que el canvas esté visible
+    lightningCanvas.style.display = 'block';
+    lightningCanvas.style.visibility = 'visible';
+    lightningCanvas.style.opacity = '1';
     
     console.log("Canvas de rayos configurado:", lightningCanvas.width, "x", lightningCanvas.height);
 }
@@ -2272,6 +2306,10 @@ function startLightningStorm(levelConfig) {
     console.log("🌩️ Iniciando tormenta eléctrica cada", levelConfig.lightningInterval / 1000, "segundos");
     setupLightningCanvas();
     
+    // Inicializar intensidad de tormenta
+    stormIntensity = 1;
+    stormStartTime = Date.now();
+    
     // Función para programar el próximo rayo
     const scheduleNextLightning = () => {
         lightningTimeoutId = setTimeout(() => {
@@ -2279,17 +2317,34 @@ function startLightningStorm(levelConfig) {
         }, levelConfig.lightningInterval);
     };
     
-    // Programar el primer rayo
-    scheduleNextLightning();
+    // Programar el primer rayo más rápido para crear tensión inmediata
+    const firstLightningDelay = Math.min(5000, levelConfig.lightningInterval / 2); // 5 segundos o la mitad del intervalo
+    console.log(`⚡ Primer rayo programado en ${firstLightningDelay / 1000} segundos`);
     
-    // Iniciar animación de efectos
+    lightningTimeoutId = setTimeout(() => {
+        triggerLightningWarning(levelConfig);
+        // Después del primer rayo, usar el intervalo normal
+        lightningTimeoutId = setTimeout(() => {
+            scheduleNextLightning();
+        }, levelConfig.lightningInterval);
+    }, firstLightningDelay);
+    
+    // FORZAR inicio de animación inmediatamente
     if (!lightningAnimationId) {
-        animateLightningEffects();
+        console.log("🎬 Iniciando animación de efectos de rayos");
+        lightningAnimationId = requestAnimationFrame(animateLightningEffects);
     }
 }
 
 function triggerLightningWarning(levelConfig) {
     if (!boardElement) return;
+    
+    // Calcular intensidad de tormenta basada en tiempo transcurrido
+    const elapsedTime = Date.now() - stormStartTime;
+    const timeProgress = Math.min(1, elapsedTime / (levelConfig.maxTimeSeconds * 1000));
+    stormIntensity = 1 + timeProgress * 2; // Intensidad de 1 a 3
+    
+    console.log(`🌩️ Intensidad de tormenta: ${stormIntensity.toFixed(2)} (progreso: ${(timeProgress * 100).toFixed(1)}%)`);
     
     // Seleccionar objetivo aleatorio en el tablero
     const targetRow = Math.floor(Math.random() * 10);
@@ -2299,7 +2354,7 @@ function triggerLightningWarning(levelConfig) {
     currentLightningTarget = { row: targetRow, col: targetCol };
     isLightningWarningActive = true;
     
-    console.log(`⚠️ Advertencia de rayo en posición [${targetRow}, ${targetCol}]`);
+    console.log(`⚠️ Advertencia de rayo en posición [${targetRow}, ${targetCol}] con intensidad ${stormIntensity.toFixed(2)}`);
     
     // Mostrar advertencia visual
     showLightningWarning(targetRow, targetCol);
@@ -2307,12 +2362,18 @@ function triggerLightningWarning(levelConfig) {
     // Programar el impacto del rayo - USAR LAS MISMAS COORDENADAS
     lightningWarningTimeoutId = setTimeout(() => {
         strikeLightning(currentLightningTarget.row, currentLightningTarget.col, levelConfig);
+        
+        // Programar el próximo rayo SOLO si el nivel sigue activo
+        if (currentSelectedLevelId === 5 && currentGameMode === 'levels') {
+            // Reducir ligeramente el intervalo con la intensidad (más rayos cuando es más intenso)
+            const adjustedInterval = levelConfig.lightningInterval * (1 - (stormIntensity - 1) * 0.1);
+            console.log(`⚡ Próximo rayo en ${adjustedInterval / 1000} segundos (intervalo ajustado por intensidad)`);
+            
+            lightningTimeoutId = setTimeout(() => {
+                triggerLightningWarning(levelConfig);
+            }, adjustedInterval);
+        }
     }, levelConfig.lightningWarningTime);
-    
-    // Programar el próximo rayo
-    lightningTimeoutId = setTimeout(() => {
-        triggerLightningWarning(levelConfig);
-    }, levelConfig.lightningInterval);
 }
 
 function showLightningWarning(targetRow, targetCol) {
@@ -2377,7 +2438,7 @@ function createStormClouds() {
 }
 
 function strikeLightning(targetRow, targetCol, levelConfig) {
-    console.log(`⚡ RAYO IMPACTA en [${targetRow}, ${targetCol}]!`);
+    console.log(`⚡ RAYO IMPACTA en [${targetRow}, ${targetCol}] - DESTRUYENDO ÁREA 3x3!`);
     
     isLightningWarningActive = false;
     currentLightningTarget = null;
@@ -2422,14 +2483,22 @@ function strikeLightning(targetRow, targetCol, levelConfig) {
 }
 
 function createLightningBolt(targetRow, targetCol) {
-    if (!boardElement || !lightningCanvas) return;
+    if (!boardElement || !lightningCanvas) {
+        console.error("❌ No se puede crear rayo: boardElement o lightningCanvas no disponibles");
+        return;
+    }
     
     const cellElement = boardElement.querySelector(`[data-row='${targetRow}'][data-col='${targetCol}']`);
-    if (!cellElement) return;
+    if (!cellElement) {
+        console.error(`❌ No se encontró celda [${targetRow}, ${targetCol}] para crear rayo`);
+        return;
+    }
     
     const cellRect = cellElement.getBoundingClientRect();
     const targetX = cellRect.left + cellRect.width / 2;
     const targetY = cellRect.top + cellRect.height / 2;
+    
+    console.log(`⚡ Creando rayo en posición (${targetX}, ${targetY}) para celda [${targetRow}, ${targetCol}]`);
     
     // Punto de inicio del rayo (arriba de la pantalla)
     const startX = targetX + (Math.random() - 0.5) * 100;
@@ -2445,12 +2514,14 @@ function createLightningBolt(targetRow, targetCol) {
                 targetY + (Math.random() - 0.5) * 20
             );
             lightningEffects.push(bolt);
+            console.log(`⚡ Rayo ${i + 1}/3 creado y añadido a efectos. Total efectos: ${lightningEffects.length}`);
         }, i * 50);
     }
     
     // Crear efecto de impacto
     const impact = new LightningImpactEffect(targetX, targetY, 2);
     lightningEffects.push(impact);
+    console.log(`💥 Efecto de impacto creado en (${targetX}, ${targetY}). Total efectos: ${lightningEffects.length}`);
     
     // Añadir partículas adicionales
     for (let i = 0; i < 30; i++) {
@@ -2460,58 +2531,90 @@ function createLightningBolt(targetRow, targetCol) {
             Math.random() < 0.6 ? 'spark' : 'glow'
         ));
     }
+    console.log(`✨ 30 partículas eléctricas creadas. Total partículas: ${lightningParticles.length}`);
+    
+    // Forzar inicio de animación si no está corriendo
+    if (!lightningAnimationId) {
+        console.log("🎬 Forzando inicio de animación de rayos");
+        lightningAnimationId = requestAnimationFrame(animateLightningEffects);
+    }
 }
 
 function electrifyArea(centerRow, centerCol, levelConfig) {
     const currentTime = Date.now();
     const endTime = currentTime + levelConfig.electrifiedDuration;
     
-    // Determinar el tamaño del área según la dificultad
-    let areaSize = 3; // Por defecto 3x3
-    const elapsedTime = (currentTime - levelStartTime) / 1000;
-    if (elapsedTime > 45) { // Después de 45 segundos, área 5x5
-        areaSize = 5;
-    }
-    
+    // Área fija de 3x3 (sin escalado por tiempo)
+    const areaSize = 3;
     const halfSize = Math.floor(areaSize / 2);
     
-    // Electrificar área
+    console.log(`⚡ Electrificando área 3x3 centrada en [${centerRow}, ${centerCol}]`);
+    
+    // Electrificar área y destruir piezas existentes
     for (let r = centerRow - halfSize; r <= centerRow + halfSize; r++) {
         for (let c = centerCol - halfSize; c <= centerCol + halfSize; c++) {
             // Verificar límites del tablero
             if (r >= 0 && r < 10 && c >= 0 && c < 10) {
                 const key = `${r}-${c}`;
+                const cellElement = boardElement.querySelector(`[data-row='${r}'][data-col='${c}']`);
                 
-                // Si hay una pieza en esta posición, electrificarla
+                // Si hay una pieza en esta posición, DESTRUIRLA con efectos espectaculares
                 if (board[r][c] === 1) {
-                    electrifiedCells.set(key, {
-                        row: r,
-                        col: c,
-                        endTime: endTime,
-                        hasExistingPiece: true
-                    });
+                    console.log(`💥 Destruyendo pieza en [${r}, ${c}] por impacto de rayo`);
                     
-                    // Aplicar efecto visual a la pieza existente
-                    const cellElement = boardElement.querySelector(`[data-row='${r}'][data-col='${c}']`);
+                    // Crear efecto de destrucción espectacular
                     if (cellElement) {
-                        cellElement.classList.add('electrified');
-                        cellElement.dataset.electrifiedUntil = endTime;
+                        const rect = cellElement.getBoundingClientRect();
+                        const centerX = rect.left + rect.width / 2;
+                        const centerY = rect.top + rect.height / 2;
+                        const pieceColor = cellElement.dataset.pieceColor || cellElement.style.backgroundColor || '#EF5350';
+                        
+                        const destructionEffect = new PieceDestructionEffect(centerX, centerY, pieceColor);
+                        destructionEffects.push(destructionEffect);
                     }
-                } else {
-                    // Celda vacía - inhabilitar para nuevas piezas
-                    electrifiedCells.set(key, {
-                        row: r,
-                        col: c,
-                        endTime: endTime,
-                        hasExistingPiece: false
-                    });
                     
-                    // Aplicar efecto visual de zona inhabilitada
-                    const cellElement = boardElement.querySelector(`[data-row='${r}'][data-col='${c}']`);
+                    // Limpiar el tablero lógico
+                    board[r][c] = 0;
+                    
+                    // Limpiar visualmente la celda SIN efectos CSS
                     if (cellElement) {
-                        cellElement.classList.add('electrified', 'disabled');
-                        cellElement.dataset.electrifiedUntil = endTime;
+                        // Limpiar todos los estilos y clases de pieza
+                        cellElement.style.backgroundColor = '';
+                        cellElement.classList.remove('piece-block', 'pulse-block-animation');
+                        cellElement.style.backgroundImage = '';
+                        cellElement.style.border = '';
+                        cellElement.style.opacity = '';
+                        delete cellElement.dataset.pieceColor;
+                        
+                        // Limpiar datos de anillo si los tenía
+                        if (cellElement.dataset.hasRing === 'true') {
+                            const ringElement = cellElement.querySelector('.board-golden-ring');
+                            if (ringElement && ringElement.parentNode) {
+                                ringElement.parentNode.removeChild(ringElement);
+                            }
+                            delete cellElement.dataset.hasRing;
+                            delete cellElement.dataset.ringId;
+                            cellElement.classList.remove('cell-with-ring');
+                        }
                     }
+                }
+                
+                // Crear efecto de zona electrificada con canvas
+                const zoneEffect = new ElectrifiedZoneEffect(r, c, levelConfig.electrifiedDuration);
+                electrifiedZoneEffects.push(zoneEffect);
+                
+                // Electrificar la celda (ahora vacía) para bloquear nuevas piezas
+                electrifiedCells.set(key, {
+                    row: r,
+                    col: c,
+                    endTime: endTime,
+                    hasExistingPiece: false // Siempre false porque destruimos las piezas
+                });
+                
+                // NO aplicar efectos CSS, solo marcar como electrificada
+                if (cellElement) {
+                    cellElement.dataset.electrifiedUntil = endTime;
+                    // NO añadir clases CSS que cambien el color
                 }
                 
                 console.log(`⚡ Celda [${r}, ${c}] electrificada hasta`, new Date(endTime).toLocaleTimeString());
@@ -2533,11 +2636,11 @@ function cleanupExpiredElectrification() {
         if (currentTime >= data.endTime) {
             expiredKeys.push(key);
             
-            // Limpiar efectos visuales
+            // Limpiar efectos visuales (solo datos, no CSS)
             const cellElement = boardElement.querySelector(`[data-row='${data.row}'][data-col='${data.col}']`);
             if (cellElement) {
-                cellElement.classList.remove('electrified', 'disabled');
                 delete cellElement.dataset.electrifiedUntil;
+                // NO remover clases CSS porque ya no las usamos
             }
         }
     });
@@ -2576,43 +2679,41 @@ function createScreenShake() {
 }
 
 function playThunderSound() {
-    // Simulación de sonido con efectos visuales adicionales
+    // Simulación de sonido sin efectos visuales persistentes
     console.log("🔊 TRUENO!");
     
-    // Crear ondas de sonido visuales
+    // Solo crear un flash rápido en lugar de ondas persistentes
     if (lightningCanvas && lightningCtx) {
-        for (let i = 0; i < 5; i++) {
-            setTimeout(() => {
-                const centerX = lightningCanvas.width / 2;
-                const centerY = lightningCanvas.height / 2;
-                
-                lightningCtx.save();
-                lightningCtx.globalAlpha = 0.3;
-                lightningCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-                lightningCtx.lineWidth = 2;
-                lightningCtx.beginPath();
-                lightningCtx.arc(centerX, centerY, i * 50, 0, Math.PI * 2);
-                lightningCtx.stroke();
-                lightningCtx.restore();
-            }, i * 100);
-        }
+        lightningCtx.save();
+        lightningCtx.globalAlpha = 0.2;
+        lightningCtx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        lightningCtx.fillRect(0, 0, lightningCanvas.width, lightningCanvas.height);
+        lightningCtx.restore();
+        
+        // El flash se limpiará automáticamente en la próxima animación
     }
 }
 
 function animateLightningEffects() {
-    if (!lightningCtx) return;
-    
-    // Solo limpiar canvas si hay efectos activos para evitar parpadeos
-    const hasActiveEffects = lightningEffects.length > 0 || lightningParticles.length > 0 || isLightningWarningActive;
-    
-    if (hasActiveEffects) {
-        // Limpiar canvas con un fade suave en lugar de limpieza completa
-        lightningCtx.save();
-        lightningCtx.globalCompositeOperation = 'destination-out';
-        lightningCtx.globalAlpha = 0.1; // Fade gradual en lugar de limpieza completa
-        lightningCtx.fillRect(0, 0, lightningCanvas.width, lightningCanvas.height);
-        lightningCtx.restore();
+    if (!lightningCtx) {
+        console.warn("⚠️ lightningCtx no disponible en animateLightningEffects");
+        return;
     }
+    
+    // Verificar si hay efectos activos
+    const hasActiveEffects = lightningEffects.length > 0 || 
+                           lightningParticles.length > 0 || 
+                           isLightningWarningActive ||
+                           electrifiedZoneEffects.length > 0 ||
+                           destructionEffects.length > 0;
+    
+    // Debug: mostrar estado de efectos
+    if (hasActiveEffects) {
+        console.log(`🎬 Animando efectos: rayos=${lightningEffects.length}, partículas=${lightningParticles.length}, zonas=${electrifiedZoneEffects.length}, destrucción=${destructionEffects.length}, advertencia=${isLightningWarningActive}`);
+    }
+    
+    // SIEMPRE limpiar el canvas completamente para evitar efectos persistentes
+    lightningCtx.clearRect(0, 0, lightningCanvas.width, lightningCanvas.height);
     
     // Actualizar y dibujar efectos de rayos
     for (let i = lightningEffects.length - 1; i >= 0; i--) {
@@ -2634,18 +2735,41 @@ function animateLightningEffects() {
         }
     }
     
+    // Actualizar y dibujar efectos de zona electrificada
+    for (let i = electrifiedZoneEffects.length - 1; i >= 0; i--) {
+        const zoneEffect = electrifiedZoneEffects[i];
+        if (!zoneEffect.update()) {
+            electrifiedZoneEffects.splice(i, 1);
+            console.log(`🔌 Efecto de zona electrificada terminado en [${zoneEffect.row}, ${zoneEffect.col}]`);
+        } else {
+            zoneEffect.draw();
+        }
+    }
+    
+    // Actualizar y dibujar efectos de destrucción
+    for (let i = destructionEffects.length - 1; i >= 0; i--) {
+        const destructionEffect = destructionEffects[i];
+        if (!destructionEffect.update()) {
+            destructionEffects.splice(i, 1);
+            console.log(`💥 Efecto de destrucción terminado`);
+        } else {
+            destructionEffect.draw();
+        }
+    }
+    
     // Dibujar efectos de advertencia si están activos
     if (isLightningWarningActive) {
         drawLightningWarningEffects();
     }
     
-    // Continuar animación solo si hay efectos activos o advertencias
-    if (hasActiveEffects || isLightningWarningActive) {
+    // Continuar animación si hay efectos activos O si estamos en el Nivel 5
+    if (hasActiveEffects || isLightningWarningActive || currentSelectedLevelId === 5) {
         lightningAnimationId = requestAnimationFrame(animateLightningEffects);
     } else {
-        // Limpiar completamente el canvas cuando no hay efectos
+        // Asegurar limpieza final del canvas
         lightningCtx.clearRect(0, 0, lightningCanvas.width, lightningCanvas.height);
         lightningAnimationId = null;
+        console.log("🧹 Canvas de rayos limpiado completamente - animación detenida");
     }
 }
 
@@ -2709,6 +2833,8 @@ function stopLightningStorm() {
     // Limpiar efectos visuales
     lightningEffects = [];
     lightningParticles = [];
+    electrifiedZoneEffects = []; // Limpiar nuevos efectos
+    destructionEffects = []; // Limpiar efectos de destrucción
     isLightningWarningActive = false;
     currentLightningTarget = null;
     
@@ -2720,7 +2846,7 @@ function cleanupAllElectrification() {
     electrifiedCells.forEach((data, key) => {
         const cellElement = boardElement.querySelector(`[data-row='${data.row}'][data-col='${data.col}']`);
         if (cellElement) {
-            cellElement.classList.remove('electrified', 'disabled', 'lightning-warning');
+            // Solo limpiar datos, no clases CSS
             delete cellElement.dataset.electrifiedUntil;
         }
     });
@@ -2761,6 +2887,9 @@ function cleanupLightningSystem() {
 
 // --- FUNCIONES DE EFECTOS VISUALES PARA COMBOS ELÉCTRICOS ---
 
+// COMENTADAS TEMPORALMENTE - PARA USO FUTURO
+
+/*
 function createElectricComboEffect(cellsToClear, comboLevel) {
     if (!cellsToClear || cellsToClear.size === 0) return;
     
@@ -2885,6 +3014,7 @@ function createElectricStormScreenEffect() {
         }, i * 100);
     }
 }
+*/
 
 // --- CLASES PARA EFECTOS DE RAYOS ELÉCTRICOS ---
 
@@ -3044,24 +3174,24 @@ class LightningImpactEffect {
         this.x = x;
         this.y = y;
         this.intensity = intensity;
-        this.life = 60;
-        this.maxLife = 60;
+        this.life = 30; // Reducido de 60 a 30 frames para que desaparezca más rápido
+        this.maxLife = 30; // Reducido de 60 a 30 frames
         this.rings = [];
         this.particles = [];
         
-        // Crear anillos de onda expansiva
-        for (let i = 0; i < 3; i++) {
+        // Crear anillos de onda expansiva (menos anillos y más rápidos)
+        for (let i = 0; i < 2; i++) { // Reducido de 3 a 2 anillos
             this.rings.push({
                 radius: 0,
-                maxRadius: 50 + i * 20,
-                speed: 2 + i * 0.5,
-                thickness: 3 - i * 0.5,
-                delay: i * 5
+                maxRadius: 40 + i * 15, // Reducido el tamaño máximo
+                speed: 3 + i * 1, // Aumentada la velocidad
+                thickness: 2 - i * 0.5, // Reducido el grosor
+                delay: i * 3 // Reducido el delay
             });
         }
         
-        // Crear partículas de impacto
-        for (let i = 0; i < 20 * intensity; i++) {
+        // Crear menos partículas de impacto
+        for (let i = 0; i < 10 * intensity; i++) { // Reducido de 20 a 10
             this.particles.push(new ElectricParticle(x, y, Math.random() < 0.7 ? 'spark' : 'glow'));
         }
     }
@@ -3144,3 +3274,375 @@ if (objectiveStartConfirmButtonElement) {
 } else {
     console.error("objectiveStartConfirmButtonElement no encontrado en el DOM");
 }
+
+// Nueva función para crear efecto de destrucción de piezas por rayos
+function createPieceDestructionEffect(cellElement) {
+    if (!cellElement) return;
+    
+    // Añadir clase de destrucción eléctrica
+    cellElement.classList.add('lightning-destruction');
+    
+    // Crear partículas de destrucción
+    const rect = cellElement.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    
+    // Crear múltiples partículas eléctricas
+    for (let i = 0; i < 15; i++) {
+        if (lightningParticles) {
+            lightningParticles.push(new ElectricParticle(
+                centerX + (Math.random() - 0.5) * 40,
+                centerY + (Math.random() - 0.5) * 40,
+                Math.random() < 0.6 ? 'spark' : 'glow'
+            ));
+        }
+    }
+    
+    // Crear efecto de explosión usando el sistema de partículas existente
+    if (typeof createParticleExplosion === 'function') {
+        createParticleExplosion(cellElement);
+    }
+    
+    // Remover la clase después de la animación
+    setTimeout(() => {
+        cellElement.classList.remove('lightning-destruction');
+    }, 500);
+    
+    console.log(`💥 Efecto de destrucción creado para celda`);
+}
+
+// --- NUEVAS CLASES PARA EFECTOS ESPECTACULARES ---
+
+// Clase para efectos de zona electrificada
+class ElectrifiedZoneEffect {
+    constructor(row, col, duration) {
+        this.row = row;
+        this.col = col;
+        this.duration = duration;
+        this.startTime = Date.now();
+        this.particles = [];
+        this.arcs = [];
+        this.intensity = 1;
+        this.pulsePhase = 0;
+        this.x = 0;
+        this.y = 0;
+        this.width = 0;
+        this.height = 0;
+        
+        // Calcular posición en pantalla
+        this.calculatePosition();
+        
+        // Crear partículas iniciales
+        this.createParticles();
+        
+        console.log(`⚡ Creando efecto de zona electrificada en [${row}, ${col}] en posición (${this.x}, ${this.y})`);
+    }
+    
+    calculatePosition() {
+        if (!boardElement) {
+            console.warn("⚠️ boardElement no disponible para calcular posición");
+            return;
+        }
+        
+        const cellElement = boardElement.querySelector(`[data-row='${this.row}'][data-col='${this.col}']`);
+        if (cellElement) {
+            const rect = cellElement.getBoundingClientRect();
+            this.x = rect.left + rect.width / 2;
+            this.y = rect.top + rect.height / 2;
+            this.width = rect.width;
+            this.height = rect.height;
+            
+            console.log(`📍 Posición calculada para celda [${this.row}, ${this.col}]: (${this.x}, ${this.y}) tamaño: ${this.width}x${this.height}`);
+        } else {
+            console.warn(`⚠️ No se encontró celda [${this.row}, ${this.col}] para calcular posición`);
+            // Valores por defecto si no se encuentra la celda
+            this.x = 100;
+            this.y = 100;
+            this.width = 30;
+            this.height = 30;
+        }
+    }
+    
+    createParticles() {
+        // Crear partículas eléctricas flotantes
+        for (let i = 0; i < 8; i++) {
+            this.particles.push({
+                x: this.x + (Math.random() - 0.5) * this.width,
+                y: this.y + (Math.random() - 0.5) * this.height,
+                speedX: (Math.random() - 0.5) * 0.5,
+                speedY: (Math.random() - 0.5) * 0.5,
+                life: Math.random() * 60 + 30,
+                maxLife: Math.random() * 60 + 30,
+                size: Math.random() * 2 + 1,
+                color: `hsl(${180 + Math.random() * 60}, 100%, ${70 + Math.random() * 30}%)`,
+                phase: Math.random() * Math.PI * 2
+            });
+        }
+        
+        console.log(`✨ Creadas ${this.particles.length} partículas para zona electrificada`);
+    }
+    
+    update() {
+        const elapsed = Date.now() - this.startTime;
+        if (elapsed >= this.duration) return false;
+        
+        this.pulsePhase += 0.1;
+        this.intensity = 0.5 + Math.sin(this.pulsePhase) * 0.5;
+        
+        // Recalcular posición en caso de que el tablero se haya movido
+        this.calculatePosition();
+        
+        // Actualizar partículas
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const particle = this.particles[i];
+            particle.life--;
+            particle.x += particle.speedX;
+            particle.y += particle.speedY;
+            particle.phase += 0.1;
+            
+            // Mantener partículas dentro del área
+            if (particle.x < this.x - this.width/2) particle.speedX = Math.abs(particle.speedX);
+            if (particle.x > this.x + this.width/2) particle.speedX = -Math.abs(particle.speedX);
+            if (particle.y < this.y - this.height/2) particle.speedY = Math.abs(particle.speedY);
+            if (particle.y > this.y + this.height/2) particle.speedY = -Math.abs(particle.speedY);
+            
+            if (particle.life <= 0) {
+                // Regenerar partícula
+                particle.x = this.x + (Math.random() - 0.5) * this.width;
+                particle.y = this.y + (Math.random() - 0.5) * this.height;
+                particle.life = particle.maxLife;
+            }
+        }
+        
+        return true;
+    }
+    
+    draw() {
+        if (!lightningCtx) return;
+        
+        lightningCtx.save();
+        
+        // Dibujar fondo electrificado
+        const gradient = lightningCtx.createRadialGradient(
+            this.x, this.y, 0,
+            this.x, this.y, this.width * 0.7
+        );
+        gradient.addColorStop(0, `rgba(0, 255, 255, ${0.3 * this.intensity})`);
+        gradient.addColorStop(0.5, `rgba(100, 200, 255, ${0.2 * this.intensity})`);
+        gradient.addColorStop(1, 'transparent');
+        
+        lightningCtx.fillStyle = gradient;
+        lightningCtx.fillRect(
+            this.x - this.width/2, 
+            this.y - this.height/2, 
+            this.width, 
+            this.height
+        );
+        
+        // Dibujar borde eléctrico más visible
+        lightningCtx.strokeStyle = `rgba(0, 255, 255, ${0.9 * this.intensity})`;
+        lightningCtx.lineWidth = 3;
+        lightningCtx.shadowColor = 'rgba(0, 255, 255, 0.8)';
+        lightningCtx.shadowBlur = 15;
+        lightningCtx.strokeRect(
+            this.x - this.width/2, 
+            this.y - this.height/2, 
+            this.width, 
+            this.height
+        );
+        
+        // Dibujar partículas
+        this.particles.forEach(particle => {
+            const alpha = (particle.life / particle.maxLife) * this.intensity;
+            lightningCtx.globalAlpha = alpha;
+            
+            // Partícula principal
+            lightningCtx.fillStyle = particle.color;
+            lightningCtx.shadowColor = particle.color;
+            lightningCtx.shadowBlur = 8;
+            lightningCtx.beginPath();
+            lightningCtx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+            lightningCtx.fill();
+            
+            // Efecto de chispa
+            const sparkSize = particle.size * (1 + Math.sin(particle.phase) * 0.5);
+            lightningCtx.globalAlpha = alpha * 0.5;
+            lightningCtx.beginPath();
+            lightningCtx.arc(particle.x, particle.y, sparkSize, 0, Math.PI * 2);
+            lightningCtx.fill();
+        });
+        
+        lightningCtx.restore();
+    }
+}
+
+// Clase para efectos de destrucción espectacular
+class PieceDestructionEffect {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.originalColor = color;
+        this.life = 60;
+        this.maxLife = 60;
+        this.fragments = [];
+        this.electricArcs = [];
+        this.shockwave = { radius: 0, maxRadius: 50, speed: 3 };
+        
+        this.createFragments();
+        this.createElectricArcs();
+    }
+    
+    createFragments() {
+        // Crear fragmentos de la pieza destruida
+        for (let i = 0; i < 12; i++) {
+            this.fragments.push({
+                x: this.x,
+                y: this.y,
+                speedX: (Math.random() - 0.5) * 8,
+                speedY: (Math.random() - 0.5) * 8 - 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.3,
+                rotation: 0,
+                size: Math.random() * 4 + 2,
+                life: Math.random() * 40 + 20,
+                maxLife: Math.random() * 40 + 20,
+                color: this.originalColor
+            });
+        }
+    }
+    
+    createElectricArcs() {
+        // Crear arcos eléctricos desde el centro
+        for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI * 2;
+            const length = Math.random() * 30 + 20;
+            this.electricArcs.push({
+                startX: this.x,
+                startY: this.y,
+                endX: this.x + Math.cos(angle) * length,
+                endY: this.y + Math.sin(angle) * length,
+                life: Math.random() * 20 + 10,
+                maxLife: Math.random() * 20 + 10,
+                thickness: Math.random() * 2 + 1,
+                segments: []
+            });
+        }
+        
+        // Generar segmentos para cada arco
+        this.electricArcs.forEach(arc => this.generateArcSegments(arc));
+    }
+    
+    generateArcSegments(arc) {
+        const distance = Math.sqrt((arc.endX - arc.startX) ** 2 + (arc.endY - arc.startY) ** 2);
+        const numSegments = Math.floor(distance / 5) + 2;
+        
+        arc.segments = [];
+        for (let i = 0; i <= numSegments; i++) {
+            const t = i / numSegments;
+            const x = arc.startX + (arc.endX - arc.startX) * t;
+            const y = arc.startY + (arc.endY - arc.startY) * t;
+            
+            // Añadir variación aleatoria
+            const offsetX = (i === 0 || i === numSegments) ? 0 : (Math.random() - 0.5) * 10;
+            const offsetY = (i === 0 || i === numSegments) ? 0 : (Math.random() - 0.5) * 10;
+            
+            arc.segments.push({ x: x + offsetX, y: y + offsetY });
+        }
+    }
+    
+    update() {
+        this.life--;
+        
+        // Actualizar onda expansiva
+        this.shockwave.radius += this.shockwave.speed;
+        
+        // Actualizar fragmentos
+        for (let i = this.fragments.length - 1; i >= 0; i--) {
+            const fragment = this.fragments[i];
+            fragment.life--;
+            fragment.x += fragment.speedX;
+            fragment.y += fragment.speedY;
+            fragment.speedY += 0.2; // Gravedad
+            fragment.speedX *= 0.98; // Fricción
+            fragment.rotation += fragment.rotationSpeed;
+            
+            if (fragment.life <= 0) {
+                this.fragments.splice(i, 1);
+            }
+        }
+        
+        // Actualizar arcos eléctricos
+        for (let i = this.electricArcs.length - 1; i >= 0; i--) {
+            const arc = this.electricArcs[i];
+            arc.life--;
+            
+            // Regenerar segmentos ocasionalmente
+            if (Math.random() < 0.3) {
+                this.generateArcSegments(arc);
+            }
+            
+            if (arc.life <= 0) {
+                this.electricArcs.splice(i, 1);
+            }
+        }
+        
+        return this.life > 0 || this.fragments.length > 0 || this.electricArcs.length > 0;
+    }
+    
+    draw() {
+        if (!lightningCtx) return;
+        
+        lightningCtx.save();
+        
+        // Dibujar onda expansiva
+        if (this.shockwave.radius < this.shockwave.maxRadius) {
+            const alpha = 1 - (this.shockwave.radius / this.shockwave.maxRadius);
+            lightningCtx.globalAlpha = alpha * 0.6;
+            lightningCtx.strokeStyle = '#00ffff';
+            lightningCtx.lineWidth = 3;
+            lightningCtx.shadowColor = '#00ffff';
+            lightningCtx.shadowBlur = 15;
+            lightningCtx.beginPath();
+            lightningCtx.arc(this.x, this.y, this.shockwave.radius, 0, Math.PI * 2);
+            lightningCtx.stroke();
+        }
+        
+        // Dibujar arcos eléctricos
+        this.electricArcs.forEach(arc => {
+            const alpha = arc.life / arc.maxLife;
+            lightningCtx.globalAlpha = alpha;
+            lightningCtx.strokeStyle = `hsl(${180 + Math.random() * 60}, 100%, 80%)`;
+            lightningCtx.lineWidth = arc.thickness;
+            lightningCtx.shadowColor = lightningCtx.strokeStyle;
+            lightningCtx.shadowBlur = 8;
+            
+            lightningCtx.beginPath();
+            if (arc.segments.length > 0) {
+                lightningCtx.moveTo(arc.segments[0].x, arc.segments[0].y);
+                for (let i = 1; i < arc.segments.length; i++) {
+                    lightningCtx.lineTo(arc.segments[i].x, arc.segments[i].y);
+                }
+            }
+            lightningCtx.stroke();
+        });
+        
+        // Dibujar fragmentos
+        this.fragments.forEach(fragment => {
+            const alpha = fragment.life / fragment.maxLife;
+            lightningCtx.globalAlpha = alpha;
+            lightningCtx.save();
+            lightningCtx.translate(fragment.x, fragment.y);
+            lightningCtx.rotate(fragment.rotation);
+            
+            // Fragmento con brillo eléctrico
+            lightningCtx.fillStyle = fragment.color;
+            lightningCtx.shadowColor = '#00ffff';
+            lightningCtx.shadowBlur = 5;
+            lightningCtx.fillRect(-fragment.size/2, -fragment.size/2, fragment.size, fragment.size);
+            
+            lightningCtx.restore();
+        });
+        
+        lightningCtx.restore();
+    }
+}
+
