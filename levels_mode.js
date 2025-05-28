@@ -65,6 +65,21 @@ let destructionEffects = []; // Efectos de destrucción de piezas
 let stormIntensity = 1; // Intensidad de la tormenta (aumenta con el tiempo)
 let stormStartTime = 0; // Tiempo de inicio de la tormenta
 
+// --- NUEVAS VARIABLES PARA SISTEMA DE PORTALES DIMENSIONALES ---
+let teleportTimeoutId = null; // Para el temporizador de teletransportación
+let teleportWarningTimeoutId = null; // Para la advertencia previa
+let portalCanvas = null; // Canvas para efectos de portales
+let portalCtx = null; // Contexto del canvas de portales
+let teleportAnimationId = null; // ID de animación de portales
+let portalEffects = []; // Array de efectos de portales activos
+let portalParticles = []; // Partículas de efectos dimensionales
+let teleportWarnings = []; // Array de advertencias de teletransportación
+let isTeleportWarningActive = false; // Si hay advertencia activa
+let piecesToTeleport = []; // Piezas marcadas para teletransportación
+let teleportIntensity = 1; // Intensidad de teletransportación (aumenta con el tiempo)
+let portalStartTime = 0; // Tiempo de inicio del sistema de portales
+let dimensionalRifts = []; // Efectos de grietas dimensionales
+
 // --- CLASE PARA PIEZAS DE CEMENTO CAYENDO ---
 class FallingCementPiece {
     constructor(targetRow, targetCol) {
@@ -472,6 +487,19 @@ const levelsConfiguration = {
         locked: false, // Desbloqueado para probar
         starCriteria: 'time',
         starsThresholds: { threeStars: 40, twoStars: 50 } // 3 estrellas <= 40s, 2 estrellas <= 50s (ajustado para el nuevo tiempo)
+    },
+    6: { 
+        id: 6, 
+        name: "Nivel 6 - Portal Dimensional", 
+        objectiveText: "Alcanza 1000 puntos en 60 segundos. Las piezas se teletransportan cada 15 segundos.", 
+        targetScore: 1000,
+        maxTimeSeconds: 60, // 60 segundos límite
+        teleportInterval: 15000, // Teletransportación cada 15 segundos
+        teleportWarningTime: 3000, // Advertencia de 3 segundos
+        teleportIntensityIncrease: true, // La frecuencia aumenta con el tiempo
+        locked: false, // Desbloqueado para probar
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 35, twoStars: 45 } // Más difícil que el nivel 5
     },
     // ... más niveles
 };
@@ -980,6 +1008,9 @@ function placePiece_levels(pieceMatrix, startRow, startCol, pieceColorForBoard) 
             movesDisplay.textContent = movesRemaining;
         }
     }
+    
+    // Verificar si se pueden reanudar las teletransportaciones (Nivel 6)
+    checkAndResumeTeleportations();
 }
 
 // Nueva función para colocar anillos en el tablero
@@ -1313,6 +1344,9 @@ function handleGameOver_levels(reason = "¡Nivel Fallido!") {
     // Limpiar sistema de rayos
     cleanupLightningSystem();
     
+    // Limpiar sistema de portales
+    cleanupPortalSystem();
+    
     if (draggedPieceElement_levels && draggedPieceElement_levels.parentNode === document.body) {
         document.body.removeChild(draggedPieceElement_levels);
         if (activePieceElement_levels) activePieceElement_levels.classList.remove('hidden-original');
@@ -1561,6 +1595,7 @@ function handleLevelWin(levelConfig) {
     cleanupCementSystem();
     cleanupRingEffects();
     cleanupLightningSystem();
+    cleanupPortalSystem();
     
     let starsEarned = 0;
 
@@ -1871,6 +1906,11 @@ function initializeLevel(levelId) {
             }, 1000);
         }
 
+        // Inicializar sistema de portales si es el Nivel 6
+        if (levelConfig.id === 6 && levelConfig.teleportInterval) {
+            startDimensionalPortals(levelConfig);
+        }
+
         updateScreenVisibility();
         console.log(`Nivel ${levelId} completamente cargado y listo para jugar.`);
     });
@@ -1907,7 +1947,7 @@ function displayLevelObjective(levelConfig) { // VERSIÓN SIMPLIFICADA
         
         // Actualizar cada segundo
         setTimeout(() => {
-            if (currentSelectedLevelId === 5 && levelStartTime > 0) {
+            if ((currentSelectedLevelId === 5 || currentSelectedLevelId === 6) && levelStartTime > 0) {
                 displayLevelObjective(levelConfig);
             }
         }, 1000);
@@ -3643,6 +3683,1045 @@ class PieceDestructionEffect {
         });
         
         lightningCtx.restore();
+    }
+}
+
+// --- FUNCIONES DEL SISTEMA DE PORTALES DIMENSIONALES ---
+
+function setupPortalCanvas() {
+    // Crear canvas para efectos de portales si no existe
+    if (!portalCanvas) {
+        portalCanvas = document.createElement('canvas');
+        portalCanvas.id = 'portalCanvas';
+        portalCanvas.style.position = 'fixed';
+        portalCanvas.style.top = '0';
+        portalCanvas.style.left = '0';
+        portalCanvas.style.pointerEvents = 'none';
+        portalCanvas.style.zIndex = '1600'; // Más alto que los rayos
+        portalCanvas.style.background = 'transparent';
+        document.body.appendChild(portalCanvas);
+        portalCtx = portalCanvas.getContext('2d');
+        
+        console.log("🌀 Canvas de portales creado y añadido al DOM");
+    }
+    
+    // Ajustar tamaño del canvas al tamaño de la ventana
+    portalCanvas.width = window.innerWidth;
+    portalCanvas.height = window.innerHeight;
+    
+    // Asegurar que el canvas esté visible
+    portalCanvas.style.display = 'block';
+    portalCanvas.style.visibility = 'visible';
+    portalCanvas.style.opacity = '1';
+    
+    console.log("🌀 Canvas de portales configurado:", portalCanvas.width, "x", portalCanvas.height);
+}
+
+function startDimensionalPortals(levelConfig) {
+    if (!levelConfig.teleportInterval) return;
+    
+    console.log("🌀 Iniciando portales dimensionales cada", levelConfig.teleportInterval / 1000, "segundos");
+    setupPortalCanvas();
+    
+    // Inicializar intensidad de portales
+    teleportIntensity = 1;
+    portalStartTime = Date.now();
+    
+    // Función para programar la próxima teletransportación
+    const scheduleNextTeleport = () => {
+        teleportTimeoutId = setTimeout(() => {
+            triggerTeleportWarning(levelConfig);
+        }, levelConfig.teleportInterval);
+    };
+    
+    // Programar la primera teletransportación después de 10 segundos
+    const firstTeleportDelay = Math.min(10000, levelConfig.teleportInterval);
+    console.log(`🌀 Primera teletransportación programada en ${firstTeleportDelay / 1000} segundos`);
+    
+    teleportTimeoutId = setTimeout(() => {
+        triggerTeleportWarning(levelConfig);
+    }, firstTeleportDelay);
+    
+    // Iniciar animación de portales
+    if (!teleportAnimationId) {
+        console.log("🎬 Iniciando animación de efectos de portales");
+        teleportAnimationId = requestAnimationFrame(animatePortalEffects);
+    }
+}
+
+function triggerTeleportWarning(levelConfig) {
+    if (!boardElement) return;
+    
+    // Calcular intensidad basada en tiempo transcurrido
+    const elapsedTime = Date.now() - portalStartTime;
+    const timeProgress = Math.min(1, elapsedTime / (levelConfig.maxTimeSeconds * 1000));
+    teleportIntensity = 1 + timeProgress * 1.5; // Intensidad de 1 a 2.5
+    
+    console.log(`🌀 Intensidad de portales: ${teleportIntensity.toFixed(2)} (progreso: ${(timeProgress * 100).toFixed(1)}%)`);
+    
+    // Encontrar piezas para teletransportar
+    const piecesToMove = findPiecesToTeleport();
+    
+    if (piecesToMove.length === 0) {
+        console.log("🌀 No hay piezas para teletransportar - programando próximo intento");
+        // Programar el próximo intento más pronto (5 segundos) para verificar si hay nuevas piezas
+        const retryDelay = 5000;
+        console.log(`🌀 Reintentando teletransportación en ${retryDelay / 1000} segundos`);
+        
+        teleportTimeoutId = setTimeout(() => {
+            triggerTeleportWarning(levelConfig);
+        }, retryDelay);
+        return;
+    }
+    
+    piecesToTeleport = piecesToMove;
+    isTeleportWarningActive = true;
+    
+    console.log(`⚠️ Advertencia de teletransportación para ${piecesToMove.length} piezas`);
+    
+    // Mostrar advertencia visual
+    showTeleportWarning(piecesToMove);
+    
+    // Programar la teletransportación
+    teleportWarningTimeoutId = setTimeout(() => {
+        executeTeleportation(piecesToMove, levelConfig);
+        scheduleNextTeleportCycle(levelConfig);
+    }, levelConfig.teleportWarningTime);
+}
+
+function scheduleNextTeleportCycle(levelConfig) {
+    // Programar el próximo ciclo SOLO si el nivel sigue activo
+    if (currentSelectedLevelId === 6 && currentGameMode === 'levels') {
+        // Reducir ligeramente el intervalo con la intensidad
+        const adjustedInterval = levelConfig.teleportInterval * (1 - (teleportIntensity - 1) * 0.15);
+        console.log(`🌀 Próxima teletransportación en ${adjustedInterval / 1000} segundos (intervalo ajustado por intensidad)`);
+        
+        teleportTimeoutId = setTimeout(() => {
+            triggerTeleportWarning(levelConfig);
+        }, adjustedInterval);
+    }
+}
+
+function findPiecesToTeleport() {
+    const pieces = [];
+    
+    // Buscar todas las piezas que realmente existen en el tablero
+    for (let r = 0; r < 10; r++) {
+        for (let c = 0; c < 10; c++) {
+            if (board[r][c] === 1) { // Solo piezas normales (no cemento ni vacías)
+                pieces.push({ row: r, col: c });
+            }
+        }
+    }
+    
+    console.log(`🌀 Piezas encontradas en el tablero: ${pieces.length}`);
+    
+    // Si no hay piezas, no hacer nada
+    if (pieces.length === 0) {
+        console.log("🌀 No hay piezas en el tablero para teletransportar");
+        return [];
+    }
+    
+    // Determinar cuántas piezas mover basado en la intensidad
+    const minPieces = Math.min(1, pieces.length); // Al menos 1 si hay piezas
+    const maxPieces = Math.min(Math.floor(1 + teleportIntensity * 2), pieces.length); // Máximo basado en intensidad
+    const numPiecesToMove = Math.floor(Math.random() * (maxPieces - minPieces + 1)) + minPieces;
+    
+    // Seleccionar piezas aleatoriamente de las que realmente existen
+    const selectedPieces = [];
+    const availablePieces = [...pieces]; // Copia del array
+    
+    for (let i = 0; i < numPiecesToMove && availablePieces.length > 0; i++) {
+        const randomIndex = Math.floor(Math.random() * availablePieces.length);
+        selectedPieces.push(availablePieces.splice(randomIndex, 1)[0]);
+    }
+    
+    console.log(`🌀 Seleccionadas ${selectedPieces.length} piezas para teletransportar de ${pieces.length} disponibles`);
+    return selectedPieces;
+}
+
+function showTeleportWarning(piecesToMove) {
+    // Marcar visualmente las piezas que se van a mover
+    piecesToMove.forEach(piece => {
+        const cellElement = boardElement.querySelector(`[data-row='${piece.row}'][data-col='${piece.col}']`);
+        if (cellElement) {
+            cellElement.classList.add('portal-warning');
+            
+            // Crear efecto de portal de advertencia
+            const rect = cellElement.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            const warningPortal = new PortalWarningEffect(centerX, centerY);
+            portalEffects.push(warningPortal);
+        }
+    });
+    
+    // Crear efecto de distorsión dimensional
+    createDimensionalDistortion();
+}
+
+function executeTeleportation(piecesToMove, levelConfig) {
+    console.log(`🌀 EJECUTANDO TELETRANSPORTACIÓN de ${piecesToMove.length} piezas`);
+    
+    isTeleportWarningActive = false;
+    
+    // Limpiar advertencias visuales
+    piecesToMove.forEach(piece => {
+        const cellElement = boardElement.querySelector(`[data-row='${piece.row}'][data-col='${piece.col}']`);
+        if (cellElement) {
+            cellElement.classList.remove('portal-warning');
+        }
+    });
+    
+    // Teletransportar cada pieza
+    piecesToMove.forEach(piece => {
+        teleportSinglePiece(piece);
+    });
+    
+    // Crear efecto de onda dimensional
+    createDimensionalWave();
+    
+    // Limpiar lista de piezas a teletransportar
+    piecesToTeleport = [];
+}
+
+function teleportSinglePiece(piece) {
+    const { row: oldRow, col: oldCol } = piece;
+    
+    // Obtener información de la pieza original
+    const oldCellElement = boardElement.querySelector(`[data-row='${oldRow}'][data-col='${oldCol}']`);
+    if (!oldCellElement || board[oldRow][oldCol] !== 1) {
+        console.warn(`🌀 Pieza en [${oldRow}, ${oldCol}] ya no existe`);
+        return;
+    }
+    
+    const pieceColor = oldCellElement.dataset.pieceColor || oldCellElement.style.backgroundColor;
+    const hasRing = oldCellElement.dataset.hasRing === 'true';
+    const ringId = oldCellElement.dataset.ringId;
+    
+    // Encontrar nueva posición inteligente
+    const newPosition = findIntelligentTeleportPosition(oldRow, oldCol);
+    if (!newPosition) {
+        console.warn(`🌀 No se encontró posición válida para teletransportar pieza de [${oldRow}, ${oldCol}]`);
+        return;
+    }
+    
+    const { row: newRow, col: newCol } = newPosition;
+    
+    // Crear efectos visuales de teletransportación
+    createTeleportationEffect(oldRow, oldCol, newRow, newCol, pieceColor);
+    
+    // Limpiar posición original
+    board[oldRow][oldCol] = 0;
+    oldCellElement.style.backgroundColor = '';
+    oldCellElement.classList.remove('piece-block');
+    delete oldCellElement.dataset.pieceColor;
+    
+    // Limpiar anillo si lo tenía
+    if (hasRing) {
+        const ringElement = oldCellElement.querySelector('.board-golden-ring');
+        if (ringElement && ringElement.parentNode) {
+            ringElement.parentNode.removeChild(ringElement);
+        }
+        delete oldCellElement.dataset.hasRing;
+        delete oldCellElement.dataset.ringId;
+        oldCellElement.classList.remove('cell-with-ring');
+    }
+    
+    // Colocar en nueva posición
+    board[newRow][newCol] = 1;
+    const newCellElement = boardElement.querySelector(`[data-row='${newRow}'][data-col='${newCol}']`);
+    if (newCellElement) {
+        newCellElement.style.backgroundColor = pieceColor;
+        newCellElement.classList.add('piece-block');
+        newCellElement.dataset.pieceColor = pieceColor;
+        
+        // Restaurar anillo si lo tenía
+        if (hasRing) {
+            newCellElement.dataset.hasRing = 'true';
+            newCellElement.dataset.ringId = ringId;
+            newCellElement.classList.add('cell-with-ring');
+            createBoardRingElement(newCellElement, ringId);
+        }
+        
+        // Animación de aparición
+        newCellElement.classList.add('portal-appear');
+        setTimeout(() => {
+            newCellElement.classList.remove('portal-appear');
+        }, 800);
+    }
+    
+    console.log(`🌀 Pieza teletransportada de [${oldRow}, ${oldCol}] a [${newRow}, ${newCol}]`);
+}
+
+function findIntelligentTeleportPosition(excludeRow, excludeCol) {
+    const validPositions = [];
+    
+    // Encontrar todas las posiciones vacías
+    for (let r = 0; r < 10; r++) {
+        for (let c = 0; c < 10; c++) {
+            if (board[r][c] === 0 && !(r === excludeRow && c === excludeCol)) {
+                validPositions.push({ row: r, col: c });
+            }
+        }
+    }
+    
+    if (validPositions.length === 0) return null;
+    
+    // Filtrar posiciones que NO completarían líneas
+    const safePositions = validPositions.filter(pos => {
+        return !wouldCompleteLineAtPosition(pos.row, pos.col);
+    });
+    
+    // Si hay posiciones seguras, usar esas; si no, usar cualquier posición válida
+    const finalPositions = safePositions.length > 0 ? safePositions : validPositions;
+    
+    // Seleccionar posición aleatoria
+    const randomIndex = Math.floor(Math.random() * finalPositions.length);
+    return finalPositions[randomIndex];
+}
+
+function wouldCompleteLineAtPosition(row, col) {
+    // Simular colocar una pieza en esta posición
+    const tempBoard = board.map(r => [...r]);
+    tempBoard[row][col] = 1;
+    
+    // Verificar si completaría una fila
+    let rowComplete = true;
+    for (let c = 0; c < 10; c++) {
+        if (tempBoard[row][c] === 0 || tempBoard[row][c] === 3) { // 0 = vacío, 3 = cemento
+            rowComplete = false;
+            break;
+        }
+    }
+    
+    if (rowComplete) return true;
+    
+    // Verificar si completaría una columna
+    let colComplete = true;
+    for (let r = 0; r < 10; r++) {
+        if (tempBoard[r][col] === 0 || tempBoard[r][col] === 3) { // 0 = vacío, 3 = cemento
+            colComplete = false;
+            break;
+        }
+    }
+    
+    return colComplete;
+}
+
+function createTeleportationEffect(oldRow, oldCol, newRow, newCol, pieceColor) {
+    if (!boardElement || !portalCanvas) return;
+    
+    // Obtener posiciones en pantalla
+    const oldCellElement = boardElement.querySelector(`[data-row='${oldRow}'][data-col='${oldCol}']`);
+    const newCellElement = boardElement.querySelector(`[data-row='${newRow}'][data-col='${newCol}']`);
+    
+    if (!oldCellElement || !newCellElement) return;
+    
+    const oldRect = oldCellElement.getBoundingClientRect();
+    const newRect = newCellElement.getBoundingClientRect();
+    
+    const oldX = oldRect.left + oldRect.width / 2;
+    const oldY = oldRect.top + oldRect.height / 2;
+    const newX = newRect.left + newRect.width / 2;
+    const newY = newRect.top + newRect.height / 2;
+    
+    // Crear portal de salida
+    const exitPortal = new TeleportationPortal(oldX, oldY, 'exit', pieceColor);
+    portalEffects.push(exitPortal);
+    
+    // Crear portal de entrada (con delay)
+    setTimeout(() => {
+        const entryPortal = new TeleportationPortal(newX, newY, 'entry', pieceColor);
+        portalEffects.push(entryPortal);
+    }, 300);
+    
+    // Crear túnel dimensional conectando ambos portales
+    const tunnel = new DimensionalTunnel(oldX, oldY, newX, newY, pieceColor);
+    portalEffects.push(tunnel);
+    
+    // Crear partículas de teletransportación
+    for (let i = 0; i < 20; i++) {
+        setTimeout(() => {
+            portalParticles.push(new TeleportParticle(oldX, oldY, newX, newY, pieceColor));
+        }, i * 15);
+    }
+    
+    console.log(`🌀 Efectos de teletransportación creados de (${oldX}, ${oldY}) a (${newX}, ${newY})`);
+}
+
+function createDimensionalDistortion() {
+    // Crear efecto de distorsión del espacio-tiempo
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+    
+    const distortion = new DimensionalDistortion(centerX, centerY, teleportIntensity);
+    portalEffects.push(distortion);
+    
+    console.log("🌀 Distorsión dimensional creada");
+}
+
+function createDimensionalWave() {
+    // Crear onda expansiva dimensional
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+    
+    const wave = new DimensionalWave(centerX, centerY, teleportIntensity);
+    portalEffects.push(wave);
+    
+    console.log("🌀 Onda dimensional creada");
+}
+
+function animatePortalEffects() {
+    if (!portalCtx) {
+        console.warn("⚠️ portalCtx no disponible en animatePortalEffects");
+        return;
+    }
+    
+    // Verificar si hay efectos activos
+    const hasActiveEffects = portalEffects.length > 0 || 
+                           portalParticles.length > 0 || 
+                           isTeleportWarningActive ||
+                           dimensionalRifts.length > 0;
+    
+    // SIEMPRE limpiar el canvas completamente
+    portalCtx.clearRect(0, 0, portalCanvas.width, portalCanvas.height);
+    
+    // Actualizar y dibujar efectos de portales
+    for (let i = portalEffects.length - 1; i >= 0; i--) {
+        const effect = portalEffects[i];
+        if (!effect.update()) {
+            portalEffects.splice(i, 1);
+        } else {
+            effect.draw();
+        }
+    }
+    
+    // Actualizar y dibujar partículas
+    for (let i = portalParticles.length - 1; i >= 0; i--) {
+        const particle = portalParticles[i];
+        if (!particle.update()) {
+            portalParticles.splice(i, 1);
+        } else {
+            particle.draw();
+        }
+    }
+    
+    // Actualizar y dibujar grietas dimensionales
+    for (let i = dimensionalRifts.length - 1; i >= 0; i--) {
+        const rift = dimensionalRifts[i];
+        if (!rift.update()) {
+            dimensionalRifts.splice(i, 1);
+        } else {
+            rift.draw();
+        }
+    }
+    
+    // Dibujar efectos de advertencia si están activos
+    if (isTeleportWarningActive) {
+        drawTeleportWarningEffects();
+    }
+    
+    // Continuar animación si hay efectos activos O si estamos en el Nivel 6
+    if (hasActiveEffects || isTeleportWarningActive || currentSelectedLevelId === 6) {
+        teleportAnimationId = requestAnimationFrame(animatePortalEffects);
+    } else {
+        // Asegurar limpieza final del canvas
+        portalCtx.clearRect(0, 0, portalCanvas.width, portalCanvas.height);
+        teleportAnimationId = null;
+        console.log("🧹 Canvas de portales limpiado completamente - animación detenida");
+    }
+}
+
+function drawTeleportWarningEffects() {
+    if (!piecesToTeleport || piecesToTeleport.length === 0 || !portalCtx) return;
+    
+    const time = Date.now() * 0.005;
+    
+    piecesToTeleport.forEach(piece => {
+        const cellElement = boardElement.querySelector(`[data-row='${piece.row}'][data-col='${piece.col}']`);
+        if (!cellElement) return;
+        
+        const cellRect = cellElement.getBoundingClientRect();
+        const centerX = cellRect.left + cellRect.width / 2;
+        const centerY = cellRect.top + cellRect.height / 2;
+        
+        // Efecto de portal pulsante
+        const pulse = Math.sin(time + piece.row + piece.col) * 0.5 + 0.5;
+        const radius = 15 + pulse * 10;
+        
+        portalCtx.save();
+        portalCtx.globalAlpha = 0.8;
+        
+        // Anillo exterior
+        portalCtx.strokeStyle = `hsl(${280 + pulse * 40}, 100%, 70%)`;
+        portalCtx.lineWidth = 3;
+        portalCtx.shadowColor = portalCtx.strokeStyle;
+        portalCtx.shadowBlur = 15;
+        
+        portalCtx.beginPath();
+        portalCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        portalCtx.stroke();
+        
+        // Anillo interior
+        portalCtx.strokeStyle = `hsl(${320 + pulse * 40}, 100%, 80%)`;
+        portalCtx.lineWidth = 2;
+        portalCtx.beginPath();
+        portalCtx.arc(centerX, centerY, radius * 0.6, 0, Math.PI * 2);
+        portalCtx.stroke();
+        
+        // Espirales de energía
+        for (let i = 0; i < 3; i++) {
+            const spiralTime = time + i * 2;
+            const spiralRadius = radius * 0.8;
+            const angle = spiralTime * 2;
+            
+            const x = centerX + Math.cos(angle) * spiralRadius * pulse;
+            const y = centerY + Math.sin(angle) * spiralRadius * pulse;
+            
+            portalCtx.fillStyle = `hsl(${300 + i * 20}, 100%, 80%)`;
+            portalCtx.shadowBlur = 10;
+            portalCtx.beginPath();
+            portalCtx.arc(x, y, 2, 0, Math.PI * 2);
+            portalCtx.fill();
+        }
+        
+        portalCtx.restore();
+    });
+}
+
+function stopDimensionalPortals() {
+    console.log("🌀 Deteniendo portales dimensionales");
+    
+    // Limpiar temporizadores
+    if (teleportTimeoutId) {
+        clearTimeout(teleportTimeoutId);
+        teleportTimeoutId = null;
+    }
+    
+    if (teleportWarningTimeoutId) {
+        clearTimeout(teleportWarningTimeoutId);
+        teleportWarningTimeoutId = null;
+    }
+    
+    // Detener animación
+    if (teleportAnimationId) {
+        cancelAnimationFrame(teleportAnimationId);
+        teleportAnimationId = null;
+    }
+    
+    // Limpiar efectos visuales
+    portalEffects = [];
+    portalParticles = [];
+    dimensionalRifts = [];
+    isTeleportWarningActive = false;
+    piecesToTeleport = [];
+    
+    // Limpiar advertencias visuales
+    const warningElements = document.querySelectorAll('.portal-warning');
+    warningElements.forEach(element => {
+        element.classList.remove('portal-warning');
+    });
+}
+
+function cleanupPortalSystem() {
+    stopDimensionalPortals();
+    
+    // Remover canvas
+    if (portalCanvas) {
+        portalCanvas.remove();
+        portalCanvas = null;
+        portalCtx = null;
+    }
+    
+    console.log("🌀 Sistema de portales limpiado completamente");
+}
+
+// --- CLASES PARA EFECTOS DE PORTALES DIMENSIONALES ---
+
+class TeleportationPortal {
+    constructor(x, y, type, pieceColor) {
+        this.x = x;
+        this.y = y;
+        this.type = type; // 'exit' o 'entry'
+        this.pieceColor = pieceColor;
+        this.life = type === 'exit' ? 60 : 80; // Portales de entrada duran más
+        this.maxLife = this.life;
+        this.radius = 0;
+        this.maxRadius = 30;
+        this.rotation = 0;
+        this.rotationSpeed = type === 'exit' ? 0.1 : -0.1;
+        this.pulsePhase = 0;
+        this.spirals = [];
+        
+        // Crear espirales de energía
+        for (let i = 0; i < 6; i++) {
+            this.spirals.push({
+                angle: (i / 6) * Math.PI * 2,
+                radius: 0,
+                speed: 0.15 + Math.random() * 0.1,
+                phase: Math.random() * Math.PI * 2
+            });
+        }
+    }
+    
+    update() {
+        this.life--;
+        this.rotation += this.rotationSpeed;
+        this.pulsePhase += 0.1;
+        
+        // Animación de apertura/cierre
+        if (this.type === 'exit') {
+            if (this.life > this.maxLife * 0.7) {
+                // Apertura rápida
+                this.radius = Math.min(this.maxRadius, this.radius + 3);
+            } else {
+                // Cierre gradual
+                this.radius = Math.max(0, this.radius - 1);
+            }
+        } else {
+            // Portal de entrada: apertura gradual
+            if (this.life > this.maxLife * 0.5) {
+                this.radius = Math.min(this.maxRadius, this.radius + 2);
+            } else {
+                this.radius = Math.max(0, this.radius - 1.5);
+            }
+        }
+        
+        // Actualizar espirales
+        this.spirals.forEach(spiral => {
+            spiral.angle += spiral.speed;
+            spiral.radius = this.radius * 0.8;
+            spiral.phase += 0.2;
+        });
+        
+        return this.life > 0 && this.radius > 0;
+    }
+    
+    draw() {
+        if (!portalCtx || this.radius <= 0) return;
+        
+        portalCtx.save();
+        portalCtx.translate(this.x, this.y);
+        portalCtx.rotate(this.rotation);
+        
+        const alpha = Math.min(1, this.life / this.maxLife);
+        const pulse = Math.sin(this.pulsePhase) * 0.3 + 0.7;
+        
+        // Gradiente radial del portal
+        const gradient = portalCtx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
+        if (this.type === 'exit') {
+            gradient.addColorStop(0, `rgba(255, 100, 255, ${alpha * 0.8})`);
+            gradient.addColorStop(0.5, `rgba(150, 50, 255, ${alpha * 0.6})`);
+            gradient.addColorStop(1, `rgba(100, 0, 200, ${alpha * 0.3})`);
+        } else {
+            gradient.addColorStop(0, `rgba(100, 255, 255, ${alpha * 0.8})`);
+            gradient.addColorStop(0.5, `rgba(50, 150, 255, ${alpha * 0.6})`);
+            gradient.addColorStop(1, `rgba(0, 100, 200, ${alpha * 0.3})`);
+        }
+        
+        // Dibujar portal base
+        portalCtx.fillStyle = gradient;
+        portalCtx.beginPath();
+        portalCtx.arc(0, 0, this.radius * pulse, 0, Math.PI * 2);
+        portalCtx.fill();
+        
+        // Anillo exterior brillante
+        portalCtx.strokeStyle = this.type === 'exit' ? 
+            `rgba(255, 150, 255, ${alpha})` : 
+            `rgba(150, 255, 255, ${alpha})`;
+        portalCtx.lineWidth = 3;
+        portalCtx.shadowColor = portalCtx.strokeStyle;
+        portalCtx.shadowBlur = 15;
+        portalCtx.beginPath();
+        portalCtx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        portalCtx.stroke();
+        
+        // Dibujar espirales de energía
+        this.spirals.forEach((spiral, index) => {
+            const spiralAlpha = alpha * (Math.sin(spiral.phase) * 0.5 + 0.5);
+            portalCtx.globalAlpha = spiralAlpha;
+            
+            const x = Math.cos(spiral.angle) * spiral.radius;
+            const y = Math.sin(spiral.angle) * spiral.radius;
+            
+            portalCtx.fillStyle = this.type === 'exit' ? 
+                `hsl(${280 + index * 10}, 100%, 80%)` : 
+                `hsl(${180 + index * 10}, 100%, 80%)`;
+            portalCtx.shadowBlur = 8;
+            portalCtx.beginPath();
+            portalCtx.arc(x, y, 3, 0, Math.PI * 2);
+            portalCtx.fill();
+        });
+        
+        portalCtx.restore();
+    }
+}
+
+class DimensionalTunnel {
+    constructor(startX, startY, endX, endY, pieceColor) {
+        this.startX = startX;
+        this.startY = startY;
+        this.endX = endX;
+        this.endY = endY;
+        this.pieceColor = pieceColor;
+        this.life = 90;
+        this.maxLife = 90;
+        this.segments = [];
+        this.particles = [];
+        
+        this.generateTunnel();
+    }
+    
+    generateTunnel() {
+        const distance = Math.sqrt((this.endX - this.startX) ** 2 + (this.endY - this.startY) ** 2);
+        const numSegments = Math.floor(distance / 15) + 3;
+        
+        this.segments = [];
+        for (let i = 0; i <= numSegments; i++) {
+            const t = i / numSegments;
+            const x = this.startX + (this.endX - this.startX) * t;
+            const y = this.startY + (this.endY - this.startY) * t;
+            
+            // Añadir curvatura dimensional
+            const curve = Math.sin(t * Math.PI) * 30;
+            const perpX = -(this.endY - this.startY) / distance;
+            const perpY = (this.endX - this.startX) / distance;
+            
+            this.segments.push({
+                x: x + perpX * curve,
+                y: y + perpY * curve,
+                width: Math.sin(t * Math.PI) * 8 + 2
+            });
+        }
+        
+        // Crear partículas que viajan por el túnel
+        for (let i = 0; i < 15; i++) {
+            this.particles.push({
+                progress: Math.random(),
+                speed: 0.02 + Math.random() * 0.03,
+                size: Math.random() * 3 + 1,
+                hue: Math.random() * 60 + 260
+            });
+        }
+    }
+    
+    update() {
+        this.life--;
+        
+        // Actualizar partículas del túnel
+        this.particles.forEach(particle => {
+            particle.progress += particle.speed;
+            if (particle.progress > 1) {
+                particle.progress = 0;
+            }
+        });
+        
+        // Regenerar túnel ocasionalmente para efecto ondulante
+        if (Math.random() < 0.1) {
+            this.generateTunnel();
+        }
+        
+        return this.life > 0;
+    }
+    
+    draw() {
+        if (!portalCtx || this.segments.length === 0) return;
+        
+        const alpha = Math.min(1, this.life / this.maxLife);
+        
+        portalCtx.save();
+        portalCtx.globalAlpha = alpha;
+        
+        // Dibujar túnel principal
+        portalCtx.strokeStyle = `rgba(200, 100, 255, ${alpha * 0.6})`;
+        portalCtx.lineWidth = 4;
+        portalCtx.shadowColor = 'rgba(200, 100, 255, 0.8)';
+        portalCtx.shadowBlur = 10;
+        
+        portalCtx.beginPath();
+        if (this.segments.length > 0) {
+            portalCtx.moveTo(this.segments[0].x, this.segments[0].y);
+            for (let i = 1; i < this.segments.length; i++) {
+                portalCtx.lineTo(this.segments[i].x, this.segments[i].y);
+            }
+        }
+        portalCtx.stroke();
+        
+        // Dibujar partículas viajando por el túnel
+        this.particles.forEach(particle => {
+            const segmentIndex = Math.floor(particle.progress * (this.segments.length - 1));
+            const segment = this.segments[segmentIndex];
+            
+            if (segment) {
+                portalCtx.fillStyle = `hsl(${particle.hue}, 100%, 70%)`;
+                portalCtx.shadowBlur = 6;
+                portalCtx.beginPath();
+                portalCtx.arc(segment.x, segment.y, particle.size, 0, Math.PI * 2);
+                portalCtx.fill();
+            }
+        });
+        
+        portalCtx.restore();
+    }
+}
+
+class TeleportParticle {
+    constructor(startX, startY, endX, endY, pieceColor) {
+        this.startX = startX;
+        this.startY = startY;
+        this.endX = endX;
+        this.endY = endY;
+        this.x = startX;
+        this.y = startY;
+        this.progress = 0;
+        this.speed = 0.015 + Math.random() * 0.02;
+        this.life = 120;
+        this.maxLife = 120;
+        this.size = Math.random() * 4 + 2;
+        this.hue = Math.random() * 60 + 260; // Púrpura/magenta
+        this.trail = [];
+        this.maxTrailLength = 8;
+    }
+    
+    update() {
+        this.life--;
+        this.progress += this.speed;
+        
+        // Movimiento con curva dimensional
+        const t = this.progress;
+        const curve = Math.sin(t * Math.PI * 2) * 20;
+        
+        this.x = this.startX + (this.endX - this.startX) * t;
+        this.y = this.startY + (this.endY - this.startY) * t + curve;
+        
+        // Actualizar trail
+        this.trail.push({ x: this.x, y: this.y });
+        if (this.trail.length > this.maxTrailLength) {
+            this.trail.shift();
+        }
+        
+        return this.life > 0 && this.progress < 1.2;
+    }
+    
+    draw() {
+        if (!portalCtx) return;
+        
+        const alpha = Math.min(1, this.life / this.maxLife);
+        
+        portalCtx.save();
+        
+        // Dibujar trail
+        this.trail.forEach((point, index) => {
+            const trailAlpha = alpha * (index / this.trail.length) * 0.5;
+            portalCtx.globalAlpha = trailAlpha;
+            portalCtx.fillStyle = `hsl(${this.hue}, 100%, 70%)`;
+            portalCtx.beginPath();
+            portalCtx.arc(point.x, point.y, this.size * 0.5, 0, Math.PI * 2);
+            portalCtx.fill();
+        });
+        
+        // Dibujar partícula principal
+        portalCtx.globalAlpha = alpha;
+        portalCtx.fillStyle = `hsl(${this.hue}, 100%, 80%)`;
+        portalCtx.shadowColor = `hsl(${this.hue}, 100%, 60%)`;
+        portalCtx.shadowBlur = 8;
+        portalCtx.beginPath();
+        portalCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        portalCtx.fill();
+        
+        portalCtx.restore();
+    }
+}
+
+class PortalWarningEffect {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.life = 180; // 3 segundos a 60fps
+        this.maxLife = 180;
+        this.rings = [];
+        
+        // Crear anillos de advertencia
+        for (let i = 0; i < 3; i++) {
+            this.rings.push({
+                radius: 0,
+                maxRadius: 25 + i * 8,
+                speed: 1 + i * 0.3,
+                delay: i * 20,
+                hue: 280 + i * 20
+            });
+        }
+    }
+    
+    update() {
+        this.life--;
+        
+        // Actualizar anillos
+        this.rings.forEach(ring => {
+            if (ring.delay <= 0) {
+                ring.radius += ring.speed;
+                if (ring.radius > ring.maxRadius) {
+                    ring.radius = 0; // Reiniciar
+                }
+            } else {
+                ring.delay--;
+            }
+        });
+        
+        return this.life > 0;
+    }
+    
+    draw() {
+        if (!portalCtx) return;
+        
+        const alpha = Math.min(1, this.life / this.maxLife);
+        
+        portalCtx.save();
+        
+        this.rings.forEach(ring => {
+            if (ring.radius > 0) {
+                const ringAlpha = alpha * (1 - ring.radius / ring.maxRadius);
+                portalCtx.globalAlpha = ringAlpha;
+                portalCtx.strokeStyle = `hsl(${ring.hue}, 100%, 70%)`;
+                portalCtx.lineWidth = 2;
+                portalCtx.shadowColor = portalCtx.strokeStyle;
+                portalCtx.shadowBlur = 10;
+                
+                portalCtx.beginPath();
+                portalCtx.arc(this.x, this.y, ring.radius, 0, Math.PI * 2);
+                portalCtx.stroke();
+            }
+        });
+        
+        portalCtx.restore();
+    }
+}
+
+class DimensionalDistortion {
+    constructor(x, y, intensity) {
+        this.x = x;
+        this.y = y;
+        this.intensity = intensity;
+        this.life = 120;
+        this.maxLife = 120;
+        this.waves = [];
+        
+        // Crear ondas de distorsión
+        for (let i = 0; i < 5; i++) {
+            this.waves.push({
+                radius: 0,
+                maxRadius: 100 + i * 50,
+                speed: 2 + i * 0.5,
+                opacity: 0.3 - i * 0.05
+            });
+        }
+    }
+    
+    update() {
+        this.life--;
+        
+        this.waves.forEach(wave => {
+            wave.radius += wave.speed;
+            if (wave.radius > wave.maxRadius) {
+                wave.radius = 0;
+            }
+        });
+        
+        return this.life > 0;
+    }
+    
+    draw() {
+        if (!portalCtx) return;
+        
+        const alpha = Math.min(1, this.life / this.maxLife);
+        
+        portalCtx.save();
+        
+        this.waves.forEach(wave => {
+            if (wave.radius > 0) {
+                const waveAlpha = alpha * wave.opacity * (1 - wave.radius / wave.maxRadius);
+                portalCtx.globalAlpha = waveAlpha;
+                portalCtx.strokeStyle = `hsl(280, 100%, 60%)`;
+                portalCtx.lineWidth = 1;
+                
+                portalCtx.beginPath();
+                portalCtx.arc(this.x, this.y, wave.radius, 0, Math.PI * 2);
+                portalCtx.stroke();
+            }
+        });
+        
+        portalCtx.restore();
+    }
+}
+
+class DimensionalWave {
+    constructor(x, y, intensity) {
+        this.x = x;
+        this.y = y;
+        this.intensity = intensity;
+        this.life = 90;
+        this.maxLife = 90;
+        this.radius = 0;
+        this.maxRadius = 200 * intensity;
+        this.speed = 4;
+    }
+    
+    update() {
+        this.life--;
+        this.radius += this.speed;
+        
+        return this.life > 0 && this.radius < this.maxRadius;
+    }
+    
+    draw() {
+        if (!portalCtx) return;
+        
+        const alpha = Math.min(1, this.life / this.maxLife) * (1 - this.radius / this.maxRadius);
+        
+        portalCtx.save();
+        portalCtx.globalAlpha = alpha * 0.6;
+        portalCtx.strokeStyle = `hsl(300, 100%, 70%)`;
+        portalCtx.lineWidth = 4;
+        portalCtx.shadowColor = 'hsl(300, 100%, 70%)';
+        portalCtx.shadowBlur = 20;
+        
+        portalCtx.beginPath();
+        portalCtx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        portalCtx.stroke();
+        
+        portalCtx.restore();
+    }
+}
+
+// Función para verificar si se pueden reanudar las teletransportaciones
+function checkAndResumeTeleportations() {
+    // Solo verificar si estamos en el Nivel 6 y el sistema está activo
+    if (currentSelectedLevelId !== 6 || !portalCanvas) return;
+    
+    // Contar piezas en el tablero
+    let piecesCount = 0;
+    for (let r = 0; r < 10; r++) {
+        for (let c = 0; c < 10; c++) {
+            if (board[r][c] === 1) {
+                piecesCount++;
+            }
+        }
+    }
+    
+    console.log(`🌀 Verificando piezas disponibles: ${piecesCount}`);
+    
+    // Si hay piezas y no hay teletransportación programada, reanudar
+    if (piecesCount > 0 && !teleportTimeoutId && !isTeleportWarningActive) {
+        console.log("🌀 Reanudando teletransportaciones - hay piezas disponibles");
+        const levelConfig = levelsConfiguration[6];
+        if (levelConfig) {
+            // Programar próxima teletransportación en 3 segundos
+            teleportTimeoutId = setTimeout(() => {
+                triggerTeleportWarning(levelConfig);
+            }, 3000);
+        }
     }
 }
 
