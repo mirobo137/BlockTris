@@ -1,6 +1,533 @@
 // Archivo para la lógica específica del Modo Niveles
 console.log("levels_mode.js cargado");
 
+// --- SISTEMA DE DETECCIÓN DE RENDIMIENTO DEL DISPOSITIVO ---
+class DevicePerformanceDetector {
+    constructor() {
+        this.performanceLevel = 'medium'; // 'low', 'medium', 'high'
+        this.metrics = {
+            cores: navigator.hardwareConcurrency || 2,
+            memory: navigator.deviceMemory || 2,
+            connection: this.getConnectionSpeed(),
+            gpu: null,
+            frameRate: 60,
+            renderTime: 0,
+            batteryLevel: null,
+            thermalState: 'nominal'
+        };
+        this.benchmarkResults = {
+            canvasPerformance: 0,
+            animationPerformance: 0,
+            memoryUsage: 0,
+            overallScore: 0
+        };
+        this.adaptiveSettings = this.getDefaultSettings();
+        this.isInitialized = false;
+    }
+
+    async initialize() {
+        if (this.isInitialized) return;
+        
+        console.log("🔍 Iniciando detección de rendimiento del dispositivo...");
+        
+        // Detectar métricas básicas del dispositivo
+        await this.detectDeviceSpecs();
+        
+        // Ejecutar benchmarks de rendimiento
+        await this.runPerformanceBenchmarks();
+        
+        // Calcular nivel de rendimiento
+        this.calculatePerformanceLevel();
+        
+        // Configurar ajustes adaptativos
+        this.configureAdaptiveSettings();
+        
+        // Monitorear rendimiento en tiempo real
+        this.startPerformanceMonitoring();
+        
+        this.isInitialized = true;
+        console.log(`📱 Dispositivo clasificado como: ${this.performanceLevel.toUpperCase()}`);
+        console.log("⚙️ Configuraciones adaptativas aplicadas:", this.adaptiveSettings);
+    }
+
+    async detectDeviceSpecs() {
+        // Detectar número de núcleos de CPU
+        this.metrics.cores = navigator.hardwareConcurrency || 2;
+        
+        // Detectar memoria RAM disponible
+        this.metrics.memory = navigator.deviceMemory || 2;
+        
+        // Detectar velocidad de conexión
+        this.metrics.connection = this.getConnectionSpeed();
+        
+        // Detectar información de GPU si está disponible
+        await this.detectGPUInfo();
+        
+        // Detectar estado de batería
+        await this.detectBatteryInfo();
+        
+        // Detectar estado térmico (si está disponible)
+        this.detectThermalState();
+    }
+
+    getConnectionSpeed() {
+        if (navigator.connection) {
+            const connection = navigator.connection;
+            const effectiveType = connection.effectiveType;
+            
+            switch (effectiveType) {
+                case 'slow-2g': return 1;
+                case '2g': return 2;
+                case '3g': return 3;
+                case '4g': return 4;
+                default: return 3;
+            }
+        }
+        return 3; // Valor por defecto
+    }
+
+    async detectGPUInfo() {
+        try {
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            
+            if (gl) {
+                const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                if (debugInfo) {
+                    const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+                    this.metrics.gpu = renderer;
+                    
+                    // Clasificar GPU basado en el renderer
+                    if (renderer.includes('Adreno 6') || renderer.includes('Mali-G7') || 
+                        renderer.includes('Apple A1') || renderer.includes('PowerVR')) {
+                        this.metrics.gpuTier = 'high';
+                    } else if (renderer.includes('Adreno 5') || renderer.includes('Mali-G5')) {
+                        this.metrics.gpuTier = 'medium';
+                    } else {
+                        this.metrics.gpuTier = 'low';
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn("No se pudo detectar información de GPU:", error);
+            this.metrics.gpuTier = 'medium';
+        }
+    }
+
+    async detectBatteryInfo() {
+        try {
+            if ('getBattery' in navigator) {
+                const battery = await navigator.getBattery();
+                this.metrics.batteryLevel = battery.level;
+                
+                // Monitorear cambios en la batería
+                battery.addEventListener('levelchange', () => {
+                    this.metrics.batteryLevel = battery.level;
+                    this.adjustForBatteryLevel();
+                });
+            }
+        } catch (error) {
+            console.warn("No se pudo acceder a la información de batería:", error);
+        }
+    }
+
+    detectThermalState() {
+        // Detectar estado térmico si está disponible (experimental)
+        if ('thermal' in navigator) {
+            navigator.thermal.addEventListener('change', (event) => {
+                this.metrics.thermalState = event.state;
+                this.adjustForThermalState();
+            });
+        }
+    }
+
+    async runPerformanceBenchmarks() {
+        console.log("🧪 Ejecutando benchmarks de rendimiento...");
+        
+        // Benchmark de rendimiento de Canvas
+        this.benchmarkResults.canvasPerformance = await this.benchmarkCanvasPerformance();
+        
+        // Benchmark de animaciones
+        this.benchmarkResults.animationPerformance = await this.benchmarkAnimationPerformance();
+        
+        // Benchmark de uso de memoria
+        this.benchmarkResults.memoryUsage = this.benchmarkMemoryUsage();
+        
+        // Calcular puntuación general
+        this.calculateOverallScore();
+    }
+
+    async benchmarkCanvasPerformance() {
+        return new Promise((resolve) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 300;
+            canvas.height = 300;
+            const ctx = canvas.getContext('2d');
+            
+            const startTime = performance.now();
+            let frames = 0;
+            const maxFrames = 60;
+            
+            const testRender = () => {
+                // Simular renderizado complejo
+                ctx.clearRect(0, 0, 300, 300);
+                
+                for (let i = 0; i < 50; i++) {
+                    ctx.fillStyle = `hsl(${i * 7}, 70%, 50%)`;
+                    ctx.fillRect(Math.random() * 300, Math.random() * 300, 20, 20);
+                    
+                    ctx.strokeStyle = `hsl(${i * 5}, 60%, 40%)`;
+                    ctx.beginPath();
+                    ctx.arc(Math.random() * 300, Math.random() * 300, 10, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                
+                frames++;
+                if (frames < maxFrames) {
+                    requestAnimationFrame(testRender);
+                } else {
+                    const endTime = performance.now();
+                    const avgFrameTime = (endTime - startTime) / frames;
+                    const score = Math.max(0, 100 - avgFrameTime);
+                    resolve(score);
+                }
+            };
+            
+            testRender();
+        });
+    }
+
+    async benchmarkAnimationPerformance() {
+        return new Promise((resolve) => {
+            const startTime = performance.now();
+            let animationFrames = 0;
+            const maxAnimations = 30;
+            
+            const testAnimation = () => {
+                // Simular cálculos de animación complejos
+                const particles = [];
+                for (let i = 0; i < 100; i++) {
+                    particles.push({
+                        x: Math.random() * 1000,
+                        y: Math.random() * 1000,
+                        vx: (Math.random() - 0.5) * 10,
+                        vy: (Math.random() - 0.5) * 10
+                    });
+                }
+                
+                // Simular actualización de partículas
+                particles.forEach(particle => {
+                    particle.x += particle.vx;
+                    particle.y += particle.vy;
+                    particle.vx *= 0.99;
+                    particle.vy *= 0.99;
+                });
+                
+                animationFrames++;
+                if (animationFrames < maxAnimations) {
+                    requestAnimationFrame(testAnimation);
+                } else {
+                    const endTime = performance.now();
+                    const avgAnimationTime = (endTime - startTime) / animationFrames;
+                    const score = Math.max(0, 100 - avgAnimationTime * 2);
+                    resolve(score);
+                }
+            };
+            
+            testAnimation();
+        });
+    }
+
+    benchmarkMemoryUsage() {
+        if (performance.memory) {
+            const used = performance.memory.usedJSHeapSize;
+            const total = performance.memory.totalJSHeapSize;
+            const limit = performance.memory.jsHeapSizeLimit;
+            
+            const usageRatio = used / limit;
+            return Math.max(0, 100 - (usageRatio * 100));
+        }
+        return 70; // Valor por defecto si no hay información de memoria
+    }
+
+    calculateOverallScore() {
+        const weights = {
+            canvas: 0.3,
+            animation: 0.3,
+            memory: 0.2,
+            specs: 0.2
+        };
+        
+        // Calcular puntuación de especificaciones
+        const specsScore = (
+            (this.metrics.cores / 8) * 25 +
+            (this.metrics.memory / 8) * 25 +
+            (this.metrics.connection / 4) * 25 +
+            (this.metrics.gpuTier === 'high' ? 25 : this.metrics.gpuTier === 'medium' ? 15 : 5)
+        );
+        
+        this.benchmarkResults.overallScore = 
+            this.benchmarkResults.canvasPerformance * weights.canvas +
+            this.benchmarkResults.animationPerformance * weights.animation +
+            this.benchmarkResults.memoryUsage * weights.memory +
+            specsScore * weights.specs;
+    }
+
+    calculatePerformanceLevel() {
+        const score = this.benchmarkResults.overallScore;
+        
+        if (score >= 75) {
+            this.performanceLevel = 'high';
+        } else if (score >= 45) {
+            this.performanceLevel = 'medium';
+        } else {
+            this.performanceLevel = 'low';
+        }
+        
+        // Ajustar basado en métricas específicas
+        if (this.metrics.cores <= 2 && this.metrics.memory <= 2) {
+            this.performanceLevel = 'low';
+        }
+        
+        if (this.metrics.batteryLevel && this.metrics.batteryLevel < 0.2) {
+            // Reducir nivel si la batería está baja
+            if (this.performanceLevel === 'high') this.performanceLevel = 'medium';
+            else if (this.performanceLevel === 'medium') this.performanceLevel = 'low';
+        }
+    }
+
+    getDefaultSettings() {
+        return {
+            maxParticles: 100,
+            animationQuality: 'high',
+            effectsEnabled: true,
+            shadowsEnabled: true,
+            particlePhysics: true,
+            complexAnimations: true,
+            frameRateTarget: 60,
+            canvasResolution: 1.0,
+            audioQuality: 'high',
+            preloadAssets: true
+        };
+    }
+
+    configureAdaptiveSettings() {
+        switch (this.performanceLevel) {
+            case 'low':
+                this.adaptiveSettings = {
+                    maxParticles: 20,
+                    animationQuality: 'low',
+                    effectsEnabled: false,
+                    shadowsEnabled: false,
+                    particlePhysics: false,
+                    complexAnimations: false,
+                    frameRateTarget: 30,
+                    canvasResolution: 0.7,
+                    audioQuality: 'low',
+                    preloadAssets: false,
+                    // Configuraciones específicas del juego
+                    cementAnimationEnabled: false,
+                    lightningEffectsReduced: true,
+                    portalEffectsSimplified: true,
+                    ringEffectsMinimal: true
+                };
+                break;
+                
+            case 'medium':
+                this.adaptiveSettings = {
+                    maxParticles: 50,
+                    animationQuality: 'medium',
+                    effectsEnabled: true,
+                    shadowsEnabled: true,
+                    particlePhysics: true,
+                    complexAnimations: false,
+                    frameRateTarget: 45,
+                    canvasResolution: 0.85,
+                    audioQuality: 'medium',
+                    preloadAssets: true,
+                    // Configuraciones específicas del juego
+                    cementAnimationEnabled: true,
+                    lightningEffectsReduced: false,
+                    portalEffectsSimplified: false,
+                    ringEffectsMinimal: false
+                };
+                break;
+                
+            case 'high':
+                this.adaptiveSettings = {
+                    maxParticles: 150,
+                    animationQuality: 'high',
+                    effectsEnabled: true,
+                    shadowsEnabled: true,
+                    particlePhysics: true,
+                    complexAnimations: true,
+                    frameRateTarget: 60,
+                    canvasResolution: 1.0,
+                    audioQuality: 'high',
+                    preloadAssets: true,
+                    // Configuraciones específicas del juego
+                    cementAnimationEnabled: true,
+                    lightningEffectsReduced: false,
+                    portalEffectsSimplified: false,
+                    ringEffectsMinimal: false
+                };
+                break;
+        }
+    }
+
+    startPerformanceMonitoring() {
+        let frameCount = 0;
+        let lastTime = performance.now();
+        
+        const monitor = () => {
+            frameCount++;
+            const currentTime = performance.now();
+            
+            if (currentTime - lastTime >= 1000) {
+                this.metrics.frameRate = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+                
+                // Ajustar configuraciones si el rendimiento baja
+                this.adjustSettingsBasedOnFrameRate();
+            }
+            
+            requestAnimationFrame(monitor);
+        };
+        
+        monitor();
+    }
+
+    adjustSettingsBasedOnFrameRate() {
+        if (this.metrics.frameRate < 20 && this.performanceLevel !== 'low') {
+            console.warn("⚠️ Rendimiento bajo detectado, reduciendo calidad...");
+            this.performanceLevel = 'low';
+            this.configureAdaptiveSettings();
+        } else if (this.metrics.frameRate > 55 && this.performanceLevel === 'low') {
+            console.log("✅ Rendimiento mejorado, aumentando calidad...");
+            this.performanceLevel = 'medium';
+            this.configureAdaptiveSettings();
+        }
+    }
+
+    adjustForBatteryLevel() {
+        if (this.metrics.batteryLevel < 0.15) {
+            // Modo de ahorro extremo de batería
+            this.adaptiveSettings.maxParticles = Math.min(this.adaptiveSettings.maxParticles, 10);
+            this.adaptiveSettings.effectsEnabled = false;
+            this.adaptiveSettings.frameRateTarget = 20;
+        } else if (this.metrics.batteryLevel < 0.3) {
+            // Modo de ahorro de batería
+            this.adaptiveSettings.maxParticles = Math.min(this.adaptiveSettings.maxParticles, 30);
+            this.adaptiveSettings.frameRateTarget = 30;
+        }
+    }
+
+    adjustForThermalState() {
+        if (this.metrics.thermalState === 'critical') {
+            // Reducir drásticamente la carga de procesamiento
+            this.adaptiveSettings.maxParticles = 5;
+            this.adaptiveSettings.effectsEnabled = false;
+            this.adaptiveSettings.frameRateTarget = 15;
+        } else if (this.metrics.thermalState === 'serious') {
+            this.adaptiveSettings.maxParticles = Math.min(this.adaptiveSettings.maxParticles, 20);
+            this.adaptiveSettings.frameRateTarget = 25;
+        }
+    }
+
+    // Métodos públicos para obtener configuraciones
+    getMaxParticles() {
+        return this.adaptiveSettings.maxParticles;
+    }
+
+    shouldUseEffects() {
+        return this.adaptiveSettings.effectsEnabled;
+    }
+
+    getAnimationQuality() {
+        return this.adaptiveSettings.animationQuality;
+    }
+
+    getFrameRateTarget() {
+        return this.adaptiveSettings.frameRateTarget;
+    }
+
+    getCanvasResolution() {
+        return this.adaptiveSettings.canvasResolution;
+    }
+
+    // Métodos específicos para el juego
+    shouldUseCementAnimation() {
+        return this.adaptiveSettings.cementAnimationEnabled !== false;
+    }
+
+    shouldReduceLightningEffects() {
+        return this.adaptiveSettings.lightningEffectsReduced === true;
+    }
+
+    shouldSimplifyPortalEffects() {
+        return this.adaptiveSettings.portalEffectsSimplified === true;
+    }
+
+    shouldUseMinimalRingEffects() {
+        return this.adaptiveSettings.ringEffectsMinimal === true;
+    }
+
+    // Método para obtener un reporte completo
+    getPerformanceReport() {
+        return {
+            level: this.performanceLevel,
+            metrics: this.metrics,
+            benchmarks: this.benchmarkResults,
+            settings: this.adaptiveSettings
+        };
+    }
+}
+
+// Instancia global del detector de rendimiento
+const devicePerformance = new DevicePerformanceDetector();
+
+// --- FIN SISTEMA DE DETECCIÓN DE RENDIMIENTO ---
+
+// HTML y funciones para el Loader de Inicialización
+function createInitializationLoader() {
+    let loaderElement = document.getElementById('initializationLoader');
+    if (!loaderElement) {
+        loaderElement = document.createElement('div');
+        loaderElement.id = 'initializationLoader';
+        loaderElement.style.position = 'fixed';
+        loaderElement.style.left = '0';
+        loaderElement.style.top = '0';
+        loaderElement.style.width = '100%';
+        loaderElement.style.height = '100%';
+        loaderElement.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        loaderElement.style.display = 'flex';
+        loaderElement.style.justifyContent = 'center';
+        loaderElement.style.alignItems = 'center';
+        loaderElement.style.zIndex = '20000'; // Asegurar que esté por encima de todo
+        loaderElement.style.color = 'white';
+        loaderElement.style.fontSize = '24px';
+        loaderElement.style.fontFamily = 'Arial, sans-serif';
+        loaderElement.innerHTML = '<span>Cargando nivel... 🚀</span>'; // Puedes usar un spinner CSS o GIF aquí
+        document.body.appendChild(loaderElement);
+    }
+    return loaderElement;
+}
+
+function showInitializationLoader(message = 'Analizando rendimiento del dispositivo...') {
+    const loader = createInitializationLoader();
+    loader.querySelector('span').textContent = message;
+    loader.style.display = 'flex';
+}
+
+function hideInitializationLoader() {
+    const loader = document.getElementById('initializationLoader');
+    if (loader) {
+        loader.style.display = 'none';
+    }
+}
+// Fin HTML y funciones para el Loader
+
 // Elementos del DOM para el Modal de Victoria de Nivel
 const levelVictoryModalElement = document.getElementById('levelVictoryModal');
 const levelVictoryTitleElement = document.getElementById('levelVictoryTitle');
@@ -85,20 +612,22 @@ class FallingCementPiece {
     constructor(targetRow, targetCol) {
         this.targetRow = targetRow;
         this.targetCol = targetCol;
-        this.x = 0; // Se calculará basado en la posición del tablero
-        this.y = -100; // Empieza arriba de la pantalla
-        this.targetX = 0; // Posición final X
-        this.targetY = 0; // Posición final Y
-        this.speedY = 2; // Velocidad inicial de caída
-        this.acceleration = 0.3; // Aceleración de la gravedad
-        this.rotation = 0; // Rotación de la pieza
-        this.rotationSpeed = (Math.random() - 0.5) * 0.2; // Velocidad de rotación aleatoria
-        this.size = CELL_SIZE; // Tamaño de la pieza
-        this.shadowOpacity = 0; // Opacidad de la sombra
-        this.impacted = false; // Si ya impactó
-        this.impactParticles = []; // Partículas del impacto
-        
+        this.size = CELL_SIZE * 0.8; 
+        this.rotation = (Math.random() - 0.5) * Math.PI / 4; 
+        this.rotationSpeed = (Math.random() - 0.5) * 0.02;
+        this.landed = false;
+        this.impacted = false;
+        this.impactParticles = [];
+        this.shadowOpacity = 0;
+
         this.calculateTargetPosition();
+        
+        this.x = this.targetX; 
+        this.y = -this.size; 
+        this.velocityY = 2 + Math.random() * 2; 
+        this.gravity = 0.15 + Math.random() * 0.1;
+
+        console.log(`[Cement] New Piece for [${this.targetRow},${this.targetCol}]. Canvas Target: x=${this.targetX?.toFixed(1)}, y=${this.targetY?.toFixed(1)}. Initial anim x=${this.x?.toFixed(1)}`);
     }
     
     calculateTargetPosition() {
@@ -123,8 +652,8 @@ class FallingCementPiece {
         }
         
         // Actualizar posición
-        this.speedY += this.acceleration;
-        this.y += this.speedY;
+        this.velocityY += this.gravity;
+        this.y += this.velocityY;
         this.rotation += this.rotationSpeed;
         
         // Calcular sombra basada en la altura
@@ -143,9 +672,13 @@ class FallingCementPiece {
     impact() {
         this.impacted = true;
         this.y = this.targetY;
+        console.log(`[Cement] Impact at [${this.targetRow},${this.targetCol}]. Anim y=${this.y?.toFixed(1)} vs targetY=${this.targetY?.toFixed(1)}. Current anim x=${this.x?.toFixed(1)} vs targetX=${this.targetX?.toFixed(1)}`);
         
-        // Crear partículas de impacto
-        for (let i = 0; i < 15; i++) {
+        // Crear partículas de impacto optimizadas basadas en el rendimiento
+        const maxParticles = devicePerformance.shouldUseEffects() ? 
+            Math.min(15, devicePerformance.getMaxParticles() / 3) : 0;
+        
+        for (let i = 0; i < maxParticles; i++) {
             this.impactParticles.push({
                 x: this.x,
                 y: this.y,
@@ -167,8 +700,10 @@ class FallingCementPiece {
         // Colocar la pieza de cemento en el tablero
         this.placeCementBlock();
         
-        // Efecto de temblor de pantalla
-        this.createScreenShake();
+        // Efecto de temblor de pantalla (solo si los efectos están habilitados)
+        if (devicePerformance.shouldUseEffects()) {
+            this.createScreenShake();
+        }
     }
     
     placeCementBlock() {
@@ -213,8 +748,8 @@ class FallingCementPiece {
         
         cementAnimationCtx.save();
         
-        // Dibujar sombra en el suelo
-        if (this.shadowOpacity > 0) {
+        // Dibujar sombra en el suelo solo si la pieza no ha impactado
+        if (!this.impacted && this.shadowOpacity > 0) {
             cementAnimationCtx.globalAlpha = this.shadowOpacity * 0.5;
             cementAnimationCtx.fillStyle = '#000000';
             cementAnimationCtx.beginPath();
@@ -222,77 +757,73 @@ class FallingCementPiece {
             cementAnimationCtx.fill();
         }
         
-        // Dibujar la pieza cayendo
-        cementAnimationCtx.globalAlpha = 1;
-        cementAnimationCtx.translate(this.x, this.y);
-        cementAnimationCtx.rotate(this.rotation);
-        
-        // Estilo de cemento con textura (más claro y visible)
-        cementAnimationCtx.fillStyle = '#A0A0A0'; // Gris claro
-        cementAnimationCtx.strokeStyle = '#5A5A5A'; // Borde gris medio
-        cementAnimationCtx.lineWidth = 2;
-        
-        // Dibujar el bloque principal
-        cementAnimationCtx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
-        cementAnimationCtx.strokeRect(-this.size/2, -this.size/2, this.size, this.size);
-        
-        // Añadir gradiente interno para efecto 3D
-        const gradient = cementAnimationCtx.createLinearGradient(-this.size/2, -this.size/2, this.size/2, this.size/2);
-        gradient.addColorStop(0, '#B8B8B8'); // Más claro arriba-izquierda
-        gradient.addColorStop(0.5, '#A0A0A0'); // Color medio
-        gradient.addColorStop(1, '#707070'); // Más oscuro abajo-derecha
-        cementAnimationCtx.fillStyle = gradient;
-        cementAnimationCtx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
-        
-        // Añadir textura de cemento con puntos más visibles
-        cementAnimationCtx.fillStyle = '#FFFFFF'; // Puntos blancos para textura
-        for (let i = 0; i < 4; i++) {
-            for (let j = 0; j < 4; j++) {
-                if (Math.random() > 0.6) {
-                    cementAnimationCtx.globalAlpha = 0.6;
-                    cementAnimationCtx.fillRect(
-                        -this.size/2 + (i * this.size/4) + Math.random() * 3,
-                        -this.size/2 + (j * this.size/4) + Math.random() * 3,
-                        2, 2
-                    );
+        // Dibujar la pieza cayendo solo si no ha impactado
+        if (!this.impacted) {
+            cementAnimationCtx.globalAlpha = 1;
+            cementAnimationCtx.translate(this.x, this.y);
+            cementAnimationCtx.rotate(this.rotation);
+            
+            cementAnimationCtx.fillStyle = '#A0A0A0'; 
+            cementAnimationCtx.strokeStyle = '#5A5A5A'; 
+            cementAnimationCtx.lineWidth = 2;
+            
+            cementAnimationCtx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+            cementAnimationCtx.strokeRect(-this.size/2, -this.size/2, this.size, this.size);
+            
+            const gradient = cementAnimationCtx.createLinearGradient(-this.size/2, -this.size/2, this.size/2, this.size/2);
+            gradient.addColorStop(0, '#B8B8B8'); 
+            gradient.addColorStop(0.5, '#A0A0A0'); 
+            gradient.addColorStop(1, '#707070'); 
+            cementAnimationCtx.fillStyle = gradient;
+            cementAnimationCtx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+            
+            cementAnimationCtx.fillStyle = '#FFFFFF'; 
+            for (let i = 0; i < 4; i++) {
+                for (let j = 0; j < 4; j++) {
+                    if (Math.random() > 0.6) {
+                        cementAnimationCtx.globalAlpha = 0.6;
+                        cementAnimationCtx.fillRect(
+                            -this.size/2 + (i * this.size/4) + Math.random() * 3,
+                            -this.size/2 + (j * this.size/4) + Math.random() * 3,
+                            2, 2
+                        );
+                    }
                 }
             }
-        }
-        
-        // Añadir algunos puntos oscuros para contraste
-        cementAnimationCtx.fillStyle = '#404040';
-        for (let i = 0; i < 3; i++) {
-            for (let j = 0; j < 3; j++) {
-                if (Math.random() > 0.8) {
-                    cementAnimationCtx.globalAlpha = 0.4;
-                    cementAnimationCtx.fillRect(
-                        -this.size/2 + (i * this.size/3) + Math.random() * 4,
-                        -this.size/2 + (j * this.size/3) + Math.random() * 4,
-                        1, 1
-                    );
+            
+            cementAnimationCtx.fillStyle = '#404040';
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    if (Math.random() > 0.8) {
+                        cementAnimationCtx.globalAlpha = 0.4;
+                        cementAnimationCtx.fillRect(
+                            -this.size/2 + (i * this.size/3) + Math.random() * 4,
+                            -this.size/2 + (j * this.size/3) + Math.random() * 4,
+                            1, 1
+                        );
+                    }
                 }
             }
-        }
-        
-        cementAnimationCtx.globalAlpha = 1; // Restaurar opacidad
-        
-        cementAnimationCtx.restore();
-        
-        // Dibujar partículas de impacto
+            cementAnimationCtx.globalAlpha = 1;
+            // El restore se hace después de dibujar las partículas o al final si no hay impacto
+        } 
+        // El save() inicial se restaura aquí después de dibujar la pieza o antes de las partículas
+        cementAnimationCtx.restore(); 
+
+        // Dibujar partículas de impacto (siempre se hace después del restore del estado de la pieza)
         if (this.impacted) {
             this.impactParticles.forEach(particle => {
-                cementAnimationCtx.save();
+                cementAnimationCtx.save(); // Save para cada partícula
                 cementAnimationCtx.globalAlpha = particle.life / particle.maxLife;
-                cementAnimationCtx.fillStyle = '#C0C0C0'; // Color gris claro para las partículas
+                cementAnimationCtx.fillStyle = '#C0C0C0'; 
                 cementAnimationCtx.beginPath();
                 cementAnimationCtx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
                 cementAnimationCtx.fill();
                 
-                // Añadir un pequeño borde más oscuro para definición
                 cementAnimationCtx.strokeStyle = '#808080';
                 cementAnimationCtx.lineWidth = 0.5;
                 cementAnimationCtx.stroke();
-                cementAnimationCtx.restore();
+                cementAnimationCtx.restore(); // Restore para cada partícula
             });
         }
     }
@@ -315,11 +846,14 @@ function setupCementAnimationCanvas() {
         cementAnimationCtx = cementAnimationCanvas.getContext('2d');
     }
     
-    // Configurar tamaño del canvas
+    // Configurar tamaño del canvas con optimización de rendimiento
     if (boardElement && gameContainerElement) {
         const containerRect = gameContainerElement.getBoundingClientRect();
-        cementAnimationCanvas.width = containerRect.width;
-        cementAnimationCanvas.height = containerRect.height;
+        
+        // Aplicar resolución optimizada basada en el rendimiento del dispositivo
+        const optimizedSize = getOptimizedCanvasSize(containerRect.width, containerRect.height);
+        cementAnimationCanvas.width = optimizedSize.width;
+        cementAnimationCanvas.height = optimizedSize.height;
         
         // Posicionar el canvas
         cementAnimationCanvas.style.position = 'absolute';
@@ -356,7 +890,7 @@ function startCementRain(levelConfig) {
         }
         
         // Programar la siguiente caída
-        if (currentSelectedLevelId === 3 && currentGameMode === 'levels') {
+        if (levelConfig && typeof levelConfig.cementRainInterval === 'number' && currentGameMode === 'levels') {
             cementRainTimeoutId = setTimeout(dropCementPiece, levelConfig.cementRainInterval);
         }
     };
@@ -365,8 +899,29 @@ function startCementRain(levelConfig) {
     cementRainTimeoutId = setTimeout(dropCementPiece, 5000);
 }
 
+// Variable global para control de frame rate de cemento
+let lastCementFrameTime = 0;
+
 function animateFallingCement() {
     if (!cementAnimationCtx || !cementAnimationCanvas) return;
+    
+    // Control de frame rate basado en el rendimiento del dispositivo
+    const targetFrameRate = devicePerformance.getFrameRateTarget();
+    const frameInterval = 1000 / targetFrameRate;
+    
+    const currentTime = performance.now();
+    
+    if (currentTime - lastCementFrameTime < frameInterval) {
+        // Saltar este frame para mantener el frame rate objetivo
+        if (fallingCementPieces.length > 0) {
+            cementAnimationFrameId = requestAnimationFrame(animateFallingCement);
+        } else {
+            cementAnimationFrameId = null;
+        }
+        return;
+    }
+    
+    lastCementFrameTime = currentTime;
     
     // Limpiar canvas
     cementAnimationCtx.clearRect(0, 0, cementAnimationCanvas.width, cementAnimationCanvas.height);
@@ -375,7 +930,11 @@ function animateFallingCement() {
     for (let i = fallingCementPieces.length - 1; i >= 0; i--) {
         const piece = fallingCementPieces[i];
         const finished = piece.update();
-        piece.draw();
+        
+        // Solo dibujar si los efectos están habilitados
+        if (devicePerformance.shouldUseEffects()) {
+            piece.draw();
+        }
         
         // Remover piezas que terminaron su animación
         if (finished) {
@@ -442,9 +1001,9 @@ const levelsConfiguration = {
     2: { 
         id: 2, 
         name: "Nivel 2 - Deshielo", 
-        objectiveText: "Destruye 3 bloques de hielo.", 
+        objectiveText: "Destruye 3 bloques de hielo completando filas o columnas utilizando los hielos.", 
         locked: false, // Desbloqueado para probar
-        maxMoves: 30, // Aumentado de 25 a 30 movimientos
+        maxMoves: 35, // Aumentado de 25 a 30 movimientos
         targetFrozenPiecesToClear: 3,
         initialFrozenPieces: [
             { row: 2, col: 2, initialStage: 2, id: "frozen_1" }, // Cambiado de stage 3 a 2
@@ -457,7 +1016,7 @@ const levelsConfiguration = {
     3: { 
         id: 3, 
         name: "Nivel 3 - Lluvia de Cemento", 
-        objectiveText: "Alcanza 1000 puntos mientras llueven bloques de cemento cada 25 segundos.", 
+        objectiveText: "Alcanza 1000 puntos mientras llueven bloques de cemento.", 
         targetScore: 1000, 
         locked: false, // Desbloqueado para probar
         maxTimeSeconds: null, // Sin límite de tiempo específico
@@ -470,7 +1029,7 @@ const levelsConfiguration = {
         name: "Nivel 4 - Cazador de Anillos", 
         objectiveText: "Recolecta 10 anillos dorados colocando las piezas que los contienen.", 
         targetRingsToCollect: 10,
-        maxMoves: 30,
+        maxMoves: 20,
         locked: false, // Desbloqueado para probar
         starCriteria: 'movesRemaining',
         starsThresholds: { threeStars: 8, twoStars: 4 } // 3 estrellas >= 8 mov. restantes, 2 estrellas >= 4 mov. restantes
@@ -478,12 +1037,12 @@ const levelsConfiguration = {
     5: { 
         id: 5, 
         name: "Nivel 5 - Tormenta Eléctrica", 
-        objectiveText: "Alcanza 1000 puntos en 60 segundos. Los rayos destruyen piezas en área 3x3.", 
+        objectiveText: "Alcanza 1000 puntos en 60 segundos. Los rayos destruyen piezas y dejan zonas electrificadas.", 
         targetScore: 1000,
-        maxTimeSeconds: 60, // 60 segundos límite (reducido de 90)
+        maxTimeSeconds: 80, // 80 segundos límite (reducido de 90)
         lightningInterval: 10000, // Rayos cada 10 segundos (reducido de 20000)
         lightningWarningTime: 2000, // Advertencia de 2 segundos
-        electrifiedDuration: 5000, // Zonas electrificadas por 5 segundos
+        electrifiedDuration: 3000, // Zonas electrificadas por 3 segundos
         locked: false, // Desbloqueado para probar
         starCriteria: 'time',
         starsThresholds: { threeStars: 40, twoStars: 50 } // 3 estrellas <= 40s, 2 estrellas <= 50s (ajustado para el nuevo tiempo)
@@ -491,16 +1050,211 @@ const levelsConfiguration = {
     6: { 
         id: 6, 
         name: "Nivel 6 - Portal Dimensional", 
-        objectiveText: "Alcanza 1000 puntos en 60 segundos. Las piezas se teletransportan cada 15 segundos.", 
+        objectiveText: "Alcanza 1000 puntos en 60 segundos. Las piezas se teletransportan al azar.", 
         targetScore: 1000,
         maxTimeSeconds: 60, // 60 segundos límite
-        teleportInterval: 15000, // Teletransportación cada 15 segundos
+        teleportInterval: 9000, // Teletransportación cada 9 segundos
         teleportWarningTime: 3000, // Advertencia de 3 segundos
         teleportIntensityIncrease: true, // La frecuencia aumenta con el tiempo
         locked: false, // Desbloqueado para probar
         starCriteria: 'time',
         starsThresholds: { threeStars: 35, twoStars: 45 } // Más difícil que el nivel 5
     },
+    // --- NUEVOS NIVELES (7 - 20) ---
+    7: {
+        id: 7,
+        name: "Nivel 7 - Congelación Avanzada",
+        objectiveText: "Destruye 5 bloques de hielo resistentes (etapa 2).",
+        locked: false,
+        maxMoves: 40,
+        targetFrozenPiecesToClear: 5,
+        initialFrozenPieces: [
+            { row: 1, col: 1, initialStage: 2, id: "frozen_adv_1" },
+            { row: 1, col: 8, initialStage: 2, id: "frozen_adv_2" },
+            { row: 8, col: 1, initialStage: 2, id: "frozen_adv_3" },
+            { row: 8, col: 8, initialStage: 2, id: "frozen_adv_4" },
+            { row: 4, col: 4, initialStage: 2, id: "frozen_adv_5" },
+        ],
+        starCriteria: 'movesRemaining',
+        starsThresholds: { threeStars: 10, twoStars: 5 }
+    },
+    8: {
+        id: 8,
+        name: "Nivel 8 - Diluvio de Cemento",
+        objectiveText: "Alcanza 1500 puntos bajo una intensa lluvia de cemento (cada 20s).",
+        targetScore: 1500,
+        locked: false,
+        maxTimeSeconds: null,
+        cementRainInterval: 20000, // Más frecuente que el Nivel 3 original
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 150, twoStars: 210 } // Tiempo en segundos
+    },
+    9: {
+        id: 9,
+        name: "Nivel 9 - Fiebre del Oro Intensa",
+        objectiveText: "Recolecta 12 anillos dorados con solo 22 movimientos.",
+        targetRingsToCollect: 12,
+        maxMoves: 22, // Más ajustado que el Nivel 4 original
+        locked: false,
+        starCriteria: 'movesRemaining',
+        starsThresholds: { threeStars: 7, twoStars: 3 }
+    },
+    10: {
+        id: 10,
+        name: "Nivel 10 - Tormenta Implacable",
+        objectiveText: "Sobrevive y alcanza 1200 puntos en 70s bajo rayos frecuentes (cada 8s).",
+        targetScore: 1200,
+        maxTimeSeconds: 70,
+        lightningInterval: 8000, // Muy frecuentes
+        lightningWarningTime: 1500,
+        electrifiedDuration: 3000,
+        locked: false,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 40, twoStars: 55 } // Tiempo en segundos
+    },
+    11: {
+        id: 11,
+        name: "Nivel 11 - Vórtice Caótico",
+        objectiveText: "Consigue 1000 puntos en 50s mientras las piezas se teletransportan muy rápido (cada 7s).",
+        targetScore: 1000,
+        maxTimeSeconds: 50, // Menos tiempo
+        teleportInterval: 7000, // Muy frecuentes
+        teleportWarningTime: 2000,
+        teleportIntensityIncrease: true,
+        locked: false,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 25, twoStars: 40 } // Tiempo en segundos
+    },
+    12: {
+        id: 12,
+        name: "Nivel 12 - Hielo y Cemento Peliagudo",
+        objectiveText: "Destruye 4 hielos (etapa 2) y alcanza 1000 puntos con lluvia de cemento (22s).",
+        locked: false,
+        maxMoves: 38,
+        targetScore: 1000,
+        targetFrozenPiecesToClear: 4,
+        initialFrozenPieces: [
+            { row: 2, col: 2, initialStage: 2, id: "hc_1" },
+            { row: 2, col: 7, initialStage: 2, id: "hc_2" },
+            { row: 7, col: 2, initialStage: 2, id: "hc_3" },
+            { row: 7, col: 7, initialStage: 2, id: "hc_4" },
+        ],
+        cementRainInterval: 22000,
+        starCriteria: 'movesRemaining',
+        starsThresholds: { threeStars: 8, twoStars: 4 }
+    },
+    13: {
+        id: 13,
+        name: "Nivel 13 - Anillos Eléctricos Peligrosos",
+        objectiveText: "Recolecta 10 anillos en 80s durante una tormenta eléctrica (rayos cada 10s).",
+        targetRingsToCollect: 10,
+        maxTimeSeconds: 80, // Menos tiempo
+        locked: false,
+        lightningInterval: 10000,
+        lightningWarningTime: 2000,
+        electrifiedDuration: 2500,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 45, twoStars: 65 } // Tiempo en segundos
+    },
+    14: {
+        id: 14,
+        name: "Nivel 14 - Cemento Dimensional Agobiante",
+        objectiveText: "Alcanza 1200 puntos con lluvia de cemento (25s) y portales (10s) en 90s.",
+        targetScore: 1200,
+        maxTimeSeconds: 90, // Menos tiempo
+        locked: false,
+        cementRainInterval: 25000,
+        teleportInterval: 10000,
+        teleportWarningTime: 2500,
+        teleportIntensityIncrease: true,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 50, twoStars: 70 } // Tiempo en segundos
+    },
+    15: {
+        id: 15,
+        name: "Nivel 15 - Infierno Helado Crítico",
+        objectiveText: "Destruye 6 hielos (etapa 2) con solo 28 movimientos.",
+        locked: false,
+        maxMoves: 28, // Muy pocos movimientos
+        targetFrozenPiecesToClear: 6,
+        initialFrozenPieces: [
+            { row: 0, col: 4, initialStage: 2, id: "fh_1" },
+            { row: 2, col: 2, initialStage: 2, id: "fh_2" },
+            { row: 2, col: 7, initialStage: 2, id: "fh_3" },
+            { row: 5, col: 4, initialStage: 2, id: "fh_4" },
+            { row: 7, col: 2, initialStage: 2, id: "fh_5" },
+            { row: 7, col: 7, initialStage: 2, id: "fh_6" },
+        ],
+        starCriteria: 'movesRemaining',
+        starsThresholds: { threeStars: 5, twoStars: 2 }
+    },
+    16: {
+        id: 16,
+        name: "Nivel 16 - Presión Temporal Extrema",
+        objectiveText: "Alcanza 2000 puntos en solo 45 segundos.",
+        targetScore: 2000,
+        maxTimeSeconds: 45, // Muy ajustado
+        locked: false,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 20, twoStars: 30 } // Tiempo en segundos, muy difícil
+    },
+    17: {
+        id: 17,
+        name: "Nivel 17 - Danza Eléctrica y Dimensional Frenética",
+        objectiveText: "Haz 1500 puntos en 80s con rayos (9s) y portales (8s) muy frecuentes.",
+        targetScore: 1500,
+        maxTimeSeconds: 80,
+        locked: false,
+        lightningInterval: 9000,
+        teleportInterval: 8000,
+        teleportIntensityIncrease: true,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 40, twoStars: 60 } // Tiempo en segundos
+    },
+    18: {
+        id: 18,
+        name: "Nivel 18 - La Fortaleza de Cemento Final",
+        objectiveText: "Alcanza 2500 puntos con lluvia de cemento (15s) y solo 25 movimientos.",
+        targetScore: 2500,
+        maxMoves: 25, // Muy restrictivo con el cemento
+        locked: false,
+        cementRainInterval: 15000, // Muy frecuente
+        starCriteria: 'movesRemaining',
+        starsThresholds: { threeStars: 6, twoStars: 2 }
+    },
+    19: {
+        id: 19,
+        name: "Nivel 19 - Triple Amenaza Combinada",
+        objectiveText: "Recolecta 5 anillos y destruye 3 hielos, con rayos (10s) y tiempo de 100s.",
+        targetRingsToCollect: 5,
+        targetFrozenPiecesToClear: 3,
+        initialFrozenPieces: [
+            { row: 4, col: 1, initialStage: 2, id: "ta_1"},
+            { row: 4, col: 4, initialStage: 2, id: "ta_2"},
+            { row: 4, col: 8, initialStage: 2, id: "ta_3"},
+        ],
+        maxTimeSeconds: 100,
+        lightningInterval: 10000,
+        electrifiedDuration: 2000, // Hacer la electrificación un poco menos penalizante aquí
+        locked: false,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 50, twoStars: 75 } // Tiempo en segundos
+    },
+    20: {
+        id: 20,
+        name: "Nivel 20 - Apocalipsis de Bloques",
+        objectiveText: "¡SOBREVIVE! Alcanza 2000 puntos en 90s con cemento (18s), rayos (8s) y portales (9s).",
+        targetScore: 2000, // Un poco menos de score para enfocar en supervivencia
+        maxTimeSeconds: 90,
+        locked: false,
+        cementRainInterval: 18000,
+        lightningInterval: 8000,
+        electrifiedDuration: 3000,
+        teleportInterval: 9000,
+        teleportIntensityIncrease: true,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 45, twoStars: 65 } // Tiempo en segundos
+    }
     // ... más niveles
 };
 
@@ -583,8 +1337,12 @@ function displayPieces_levels() {
   for (let i = 0; i < 3; i++) {
     const newPieceElement = generateSinglePieceElement_levels();
     
-    // Añadir anillo si es el Nivel 4
-    if (currentSelectedLevelId === 4) {
+    // Añadir anillo si el nivel actual está configurado para tener anillos
+    const currentLevelConfig = levelsConfiguration[currentSelectedLevelId];
+    if (currentLevelConfig && currentLevelConfig.targetRingsToCollect) {
+        // Podríamos añadir una probabilidad para que no todas las piezas tengan anillo,
+        // o controlar cuántos anillos activos puede haber a la vez.
+        // Por ahora, si el nivel tiene objetivo de anillos, cada nueva pieza tendrá uno.
         addRingToPiece(newPieceElement);
     }
     
@@ -902,8 +1660,9 @@ async function dragEnd_levels(event) {
             // Colocar la pieza en el tablero
             placePiece_levels(selectedPiece_levels.matrix, bestPlacePos.row, bestPlacePos.col, selectedPiece_levels.color);
             
-            // Colocar anillo en el tablero si la pieza tenía uno (Nivel 4)
-            if (currentSelectedLevelId === 4 && activePieceElement_levels && activePieceElement_levels.ringData) {
+            const currentLevelConfigForRings = levelsConfiguration[currentSelectedLevelId];
+            // Colocar anillo en el tablero si la pieza tenía uno y el nivel lo requiere
+            if (currentLevelConfigForRings && currentLevelConfigForRings.targetRingsToCollect && activePieceElement_levels && activePieceElement_levels.ringData) {
                 placeRingsOnBoard(selectedPiece_levels.matrix, bestPlacePos.row, bestPlacePos.col, activePieceElement_levels.ringData);
             }
             
@@ -914,8 +1673,9 @@ async function dragEnd_levels(event) {
             // Corrected piece replenishment: generate and append only one new piece
             const newSinglePiece_levels = generateSinglePieceElement_levels();
             
-            // Añadir anillo a la nueva pieza si es el Nivel 4
-            if (currentSelectedLevelId === 4) {
+            const currentLevelConfigForNewPieceRing = levelsConfiguration[currentSelectedLevelId];
+            // Añadir anillo a la nueva pieza si el nivel actual está configurado para tener anillos
+            if (currentLevelConfigForNewPieceRing && currentLevelConfigForNewPieceRing.targetRingsToCollect) {
                 addRingToPiece(newSinglePiece_levels);
             }
             
@@ -1785,135 +2545,171 @@ function setupMobileScrollDetection() {
 function initializeLevel(levelId) {
     console.log(`Inicializando Nivel ${levelId}...`);
     
-    const levelConfig = levelsConfiguration[levelId];
-    if (!levelConfig) {
-        console.error(`No se encontró configuración para el nivel ${levelId}`);
-        navigateTo('level-select'); 
-        return;
-    }
-    currentSelectedLevelId = levelId; // Establecer el ID del nivel actual
-
-    // Mostrar el modal de objetivo primero
-    showInitialObjectiveModal(levelConfig, () => {
-        // Esta función se ejecutará cuando el jugador cierre el modal de objetivo
-        console.log("Continuando con la inicialización del nivel después del modal de objetivo.");
-        levelStartTime = 0; // Resetear por si acaso
-        if (levelConfig.starCriteria === 'time') {
-            levelStartTime = Date.now();
-            console.log("Temporizador de nivel iniciado.");
-        }
-
-        // Ocultar otros modales si estuvieran visibles
-        if (levelVictoryModalElement && levelVictoryModalElement.classList.contains('visible')) {
-            levelVictoryModalElement.classList.remove('visible');
-            levelVictoryModalElement.classList.add('hidden');
-        }
-        if (gameOverModal && gameOverModal.classList.contains('levels-game-over-active')) {
-            gameOverModal.classList.remove('levels-game-over-active');
-            gameOverModal.classList.remove('visible');
-            gameOverModal.classList.add('hidden');
-        }
-
-        currentGameMode = 'levels'; 
-        currentScreen = 'gameplay';
+    const performInitialization = async () => {
+        showInitializationLoader('Preparando nivel y analizando rendimiento...'); // Mostrar loader
         
-        board.length = 0; 
-        for (let i = 0; i < 10; i++) { 
-            board.push(Array(10).fill(0));
-        }
-        score = 0;
-        updateScore(0); 
-
-        // Resetear estado de combo (copiado de la función original)
-        isComboActive = false;
-        linesClearedForComboActivation = 0;
-        timeOfFirstLineClearForActivation = 0;
-        linesClearedInCurrentComboWindow = 0;
-        currentComboLevel = 0;
-        clearTimeout(comboProgressionTimeoutId);
-        comboProgressionTimeoutId = null;
-        clearTimeout(comboActivationHelperTimeoutId);
-        comboActivationHelperTimeoutId = null;
-        if (typeof hideComboMessage === 'function') hideComboMessage();    
-        if (typeof updateComboVisuals === 'function') updateComboVisuals(); 
-        if (backgroundCanvas) backgroundCanvas.style.display = 'none'; 
-        if (typeof manageStarAnimation === 'function') manageStarAnimation(false);
-        document.body.style.background = 'linear-gradient(to bottom right, #6D5B97, #A77DBA)'; 
-
-        if(piecesElement) piecesElement.innerHTML = '';
-        displayPieces_levels(); 
-
-        createBoardCells(); 
-
-        frozenPiecesData = []; 
-        if (levelConfig.initialFrozenPieces && levelConfig.initialFrozenPieces.length > 0) {
-            levelConfig.initialFrozenPieces.forEach(frozenPieceInfo => {
-                const { row, col, initialStage, id } = frozenPieceInfo;
-                if (board[row] && typeof board[row][col] !== 'undefined') {
-                    board[row][col] = 2; 
-                    const cellElement = boardElement.querySelector(`[data-row='${row}'][data-col='${col}']`);
-                    if (cellElement) {
-                        cellElement.classList.add('frozen-cell');
-                        cellElement.classList.add(`frozen-stage-${initialStage}`);
-                        cellElement.dataset.frozenId = id; 
-                        cellElement.dataset.frozenStage = initialStage;
-                    }
-                    frozenPiecesData.push({ id, row, col, currentStage: initialStage, initialStage });
-                }
-            });
-            console.log("Piezas congeladas inicializadas:", frozenPiecesData);
-        }
-
-        if (typeof levelConfig.maxMoves !== 'undefined') {
-            movesRemaining = levelConfig.maxMoves;
-        } else {
-            movesRemaining = 0; 
-        }
-        
-        requestAnimationFrame(() => {
-            if (particleCanvas && boardElement && gameContainerElement) { 
-                setupParticleCanvas();
+        try {
+            // Inicializar sistema de detección de rendimiento y esperar a que termine
+            if (!devicePerformance.isInitialized) {
+                await devicePerformance.initialize();
+                console.log("🚀 Sistema de optimización de rendimiento activado");
+                console.log("📊 Reporte de rendimiento:", devicePerformance.getPerformanceReport());
             } else {
-                console.warn("PARTICLE DEBUG: No se pudo configurar el canvas (desde rAF en initializeLevel) porque faltan elementos.");
+                 // Si ya está inicializado, podríamos forzar una re-evaluación rápida o simplemente continuar
+                 // Por ahora, solo mostramos un mensaje y continuamos.
+                 console.log("🔁 Sistema de optimización ya inicializado. Usando configuraciones existentes.");
             }
-        });
-        particles = [];
-        if (animationFrameIdParticles) {
-            cancelAnimationFrame(animationFrameIdParticles);
-            animationFrameIdParticles = null;
-            if(particleCtx && particleCanvas) particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+        } catch (error) {
+            console.warn("⚠️ Error al inicializar detección de rendimiento:", error);
+            // Continuar igualmente con configuraciones por defecto si falla la detección
+        } finally {
+            hideInitializationLoader(); // Ocultar loader ANTES de mostrar el modal de objetivo
         }
-
-        displayLevelObjective(levelConfig); // Llamar a la versión SIMPLIFICADA
-
-        // Iniciar lluvia de cemento si es el Nivel 3
-        if (levelConfig.id === 3 && levelConfig.cementRainInterval) {
-            startCementRain(levelConfig);
+        
+        const levelConfig = levelsConfiguration[levelId];
+        if (!levelConfig) {
+            console.error(`No se encontró configuración para el nivel ${levelId}`);
+            navigateTo('level-select'); 
+            return;
         }
+        currentSelectedLevelId = levelId;
 
-        // Inicializar sistema de anillos si es el Nivel 4
-        if (levelConfig.id === 4 && levelConfig.targetRingsToCollect) {
-            initializeRingSystem(levelConfig);
-        }
+        // Mostrar el modal de objetivo primero
+        showInitialObjectiveModal(levelConfig, () => {
+            // ... (resto del callback sin cambios)
+            console.log("Continuando con la inicialización del nivel después del modal de objetivo.");
+            levelStartTime = 0; 
+            if (levelConfig.starCriteria === 'time') {
+                levelStartTime = Date.now();
+                console.log("Temporizador de nivel iniciado.");
+            }
 
-        // Inicializar sistema de rayos si es el Nivel 5
-        if (levelConfig.id === 5 && levelConfig.lightningInterval) {
-            startLightningStorm(levelConfig);
+            if (levelVictoryModalElement && levelVictoryModalElement.classList.contains('visible')) {
+                levelVictoryModalElement.classList.remove('visible');
+                levelVictoryModalElement.classList.add('hidden');
+            }
+            if (gameOverModal && gameOverModal.classList.contains('levels-game-over-active')) {
+                gameOverModal.classList.remove('levels-game-over-active');
+                gameOverModal.classList.remove('visible');
+                gameOverModal.classList.add('hidden');
+            }
+
+            currentGameMode = 'levels'; 
+            currentScreen = 'gameplay';
+            updateScreenVisibility(); 
             
-            // Ejecutar test del canvas después de un breve delay
-            setTimeout(() => {
-                testLightningCanvas();
-            }, 1000);
-        }
+            board.length = 0; 
+            for (let i = 0; i < 10; i++) { 
+                board.push(Array(10).fill(0));
+            }
+            score = 0;
+            updateScore(0); 
 
-        // Inicializar sistema de portales si es el Nivel 6
-        if (levelConfig.id === 6 && levelConfig.teleportInterval) {
-            startDimensionalPortals(levelConfig);
-        }
+            isComboActive = false;
+            linesClearedForComboActivation = 0;
+            timeOfFirstLineClearForActivation = 0;
+            linesClearedInCurrentComboWindow = 0;
+            currentComboLevel = 0;
+            clearTimeout(comboProgressionTimeoutId);
+            comboProgressionTimeoutId = null;
+            clearTimeout(comboActivationHelperTimeoutId);
+            comboActivationHelperTimeoutId = null;
+            if (typeof hideComboMessage === 'function') hideComboMessage();    
+            if (typeof updateComboVisuals === 'function') updateComboVisuals(); 
+            if (backgroundCanvas) backgroundCanvas.style.display = 'none'; 
+            if (typeof manageStarAnimation === 'function') manageStarAnimation(false);
+            document.body.style.background = 'linear-gradient(to bottom right, #6D5B97, #A77DBA)'; 
 
-        updateScreenVisibility();
-        console.log(`Nivel ${levelId} completamente cargado y listo para jugar.`);
-    });
+            if(piecesElement) piecesElement.innerHTML = '';
+            displayPieces_levels(); 
+
+            createBoardCells(); 
+
+            frozenPiecesData = []; 
+            if (levelConfig.initialFrozenPieces && levelConfig.initialFrozenPieces.length > 0) {
+                levelConfig.initialFrozenPieces.forEach(frozenPieceInfo => {
+                    const { row, col, initialStage, id } = frozenPieceInfo;
+                    if (board[row] && typeof board[row][col] !== 'undefined') {
+                        board[row][col] = 2; 
+                        const cellElement = boardElement.querySelector(`[data-row='${row}'][data-col='${col}']`);
+                        if (cellElement) {
+                            cellElement.classList.add('frozen-cell');
+                            cellElement.classList.add(`frozen-stage-${initialStage}`);
+                            cellElement.dataset.frozenId = id; 
+                            cellElement.dataset.frozenStage = initialStage;
+                        }
+                        frozenPiecesData.push({ id, row, col, currentStage: initialStage, initialStage });
+                    }
+                });
+                console.log("Piezas congeladas inicializadas:", frozenPiecesData);
+            }
+
+            if (typeof levelConfig.maxMoves !== 'undefined') {
+                movesRemaining = levelConfig.maxMoves;
+            } else {
+                movesRemaining = 0; 
+            }
+            
+            requestAnimationFrame(() => {
+                 requestAnimationFrame(() => { 
+                    if (particleCanvas && boardElement && gameContainerElement) { 
+                        if (currentScreen === 'gameplay' && boardElement.offsetWidth > 0) {
+                            setupParticleCanvas();
+                        } else {
+                            console.warn("PARTICLE DEBUG: No se configuró el canvas porque la pantalla de juego no está activa o boardElement no tiene dimensiones.");
+                        }
+                    } else {
+                        console.warn("PARTICLE DEBUG: No se pudo configurar el canvas (desde rAF en initializeLevel) porque faltan elementos.");
+                    }
+                });
+            });
+            particles = [];
+            if (animationFrameIdParticles) {
+                cancelAnimationFrame(animationFrameIdParticles);
+                animationFrameIdParticles = null;
+                if(particleCtx && particleCanvas) particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+            }
+
+            displayLevelObjective(levelConfig); 
+
+            if (levelConfig.cementRainInterval) {
+                if (devicePerformance.shouldUseCementAnimation()) {
+                    startCementRain(levelConfig);
+                } else {
+                    console.log("🔧 Animación de cemento deshabilitada por optimización de rendimiento");
+                    startSimplifiedCementRain(levelConfig);
+                }
+            }
+
+            if (levelConfig.targetRingsToCollect) {
+                initializeRingSystem(levelConfig);
+            }
+
+            if (levelConfig.lightningInterval) {
+                if (devicePerformance.shouldReduceLightningEffects()) {
+                    console.log("🔧 Efectos de rayos reducidos por optimización de rendimiento");
+                    startSimplifiedLightningStorm(levelConfig);
+                } else {
+                    startLightningStorm(levelConfig);
+                }
+            }
+
+            if (levelConfig.teleportInterval) {
+                if (devicePerformance.shouldSimplifyPortalEffects()) {
+                    console.log("🔧 Efectos de portales simplificados por optimización de rendimiento");
+                    startSimplifiedDimensionalPortals(levelConfig);
+                } else {
+                    startDimensionalPortals(levelConfig);
+                }
+            }
+
+            console.log(`Nivel ${levelId} inicializado correctamente.`);
+            
+            addPerformanceInfoButton();
+        });
+    };
+    
+    performInitialization();
 }
 
 function displayLevelObjective(levelConfig) { // VERSIÓN SIMPLIFICADA
@@ -1937,18 +2733,24 @@ function displayLevelObjective(levelConfig) { // VERSIÓN SIMPLIFICADA
     let content = ""; // Reiniciar contenido
     
     // Nivel 5 - Tormenta Eléctrica con temporizador
-    if (levelConfig.id === 5 && levelConfig.maxTimeSeconds) {
+    if (levelConfig.maxTimeSeconds && levelStartTime > 0) { // Condición generalizada para cualquier nivel con temporizador
         const remainingTime = Math.max(0, levelConfig.maxTimeSeconds - Math.floor((Date.now() - levelStartTime) / 1000));
         const minutes = Math.floor(remainingTime / 60);
         const seconds = remainingTime % 60;
         const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
         
-        content = `<p><span class="info-label">Meta:</span> ${levelConfig.targetScore} Pts | <span class="info-label">Tiempo:</span> <span id="time-remaining-display" class="${remainingTime <= 15 ? 'critical' : remainingTime <= 30 ? 'warning' : ''}">${timeString}</span></p>`;
+        let scoreText = "";
+        if (levelConfig.targetScore) {
+            scoreText = `<span class="info-label">Meta:</span> ${levelConfig.targetScore} Pts | `;
+        }
+
+        content = `<p>${scoreText}<span class="info-label">Tiempo:</span> <span id="time-remaining-display" class="${remainingTime <= 15 ? 'critical' : remainingTime <= 30 ? 'warning' : ''}">${timeString}</span></p>`;
         
         // Actualizar cada segundo
         setTimeout(() => {
-            if ((currentSelectedLevelId === 5 || currentSelectedLevelId === 6) && levelStartTime > 0) {
-                displayLevelObjective(levelConfig);
+            // Asegurarse de que la actualización solo ocurra si el nivel actual sigue siendo el mismo y tiene temporizador
+            if (currentSelectedLevelId === levelConfig.id && levelConfig.maxTimeSeconds && levelStartTime > 0) {
+                displayLevelObjective(levelsConfiguration[currentSelectedLevelId]); // Usar la configuración del nivel actual
             }
         }, 1000);
     } else if (levelConfig.targetScore && !levelConfig.targetFrozenPiecesToClear && !levelConfig.targetRingsToCollect && typeof levelConfig.maxMoves === 'undefined') { // Solo Nivel 1 (o similar)
@@ -2377,6 +3179,10 @@ function startLightningStorm(levelConfig) {
 }
 
 function triggerLightningWarning(levelConfig) {
+    // DEBUG FLAGS
+    window.debugPortalCanvasOnce = true;
+    window.debugTeleportPieceOnce = true;
+
     if (!boardElement) return;
     
     // Calcular intensidad de tormenta basada en tiempo transcurrido
@@ -2403,15 +3209,36 @@ function triggerLightningWarning(levelConfig) {
     lightningWarningTimeoutId = setTimeout(() => {
         strikeLightning(currentLightningTarget.row, currentLightningTarget.col, levelConfig);
         
-        // Programar el próximo rayo SOLO si el nivel sigue activo
-        if (currentSelectedLevelId === 5 && currentGameMode === 'levels') {
+        // Programar el próximo rayo si la configuración del nivel actual lo permite
+        const currentLevelConfig = levelsConfiguration[currentSelectedLevelId];
+        if (currentLevelConfig && currentLevelConfig.lightningInterval && currentGameMode === 'levels') {
             // Reducir ligeramente el intervalo con la intensidad (más rayos cuando es más intenso)
-            const adjustedInterval = levelConfig.lightningInterval * (1 - (stormIntensity - 1) * 0.1);
-            console.log(`⚡ Próximo rayo en ${adjustedInterval / 1000} segundos (intervalo ajustado por intensidad)`);
+            // Asegurarse de que stormIntensity es un número y >= 1
+            const currentStormIntensity = (typeof stormIntensity === 'number' && stormIntensity >= 1) ? stormIntensity : 1;
+            let adjustedInterval = currentLevelConfig.lightningInterval;
+            
+            // Aplicar ajuste de intensidad (similar a como se hizo con portales, opcionalmente)
+            // Por ahora, mantendremos la lógica original de reducción si la tormenta está activa.
+            // El factor (currentStormIntensity - 1) * 0.1 determina la reducción.
+            // Limitar la reducción para que el intervalo no sea menor al 20% del original.
+            const reductionMultiplier = Math.max(0.20, 1 - (currentStormIntensity - 1) * 0.1);
+            adjustedInterval = currentLevelConfig.lightningInterval * reductionMultiplier;
+            
+            // Asegurar un intervalo mínimo.
+            adjustedInterval = Math.max(500, adjustedInterval); // Mínimo 0.5 segundos
+
+            console.log(`⚡ Próximo rayo en ${adjustedInterval / 1000} segundos (Intervalo base: ${currentLevelConfig.lightningInterval / 1000}, Intensidad: ${currentStormIntensity.toFixed(2)})`);
             
             lightningTimeoutId = setTimeout(() => {
-                triggerLightningWarning(levelConfig);
+                // Verificar que seguimos en el mismo nivel con rayos antes de volver a disparar
+                if (currentSelectedLevelId === currentLevelConfig.id && levelsConfiguration[currentSelectedLevelId]?.lightningInterval) {
+                    triggerLightningWarning(levelsConfiguration[currentSelectedLevelId]); // Usar la config más actualizada
+                }
             }, adjustedInterval);
+        } else {
+            if (!(currentLevelConfig && currentLevelConfig.lightningInterval)) {
+                console.log("⚡ No se reprograma rayo: el nivel actual no tiene lightningInterval.");
+            }
         }
     }, levelConfig.lightningWarningTime);
 }
@@ -3688,8 +4515,8 @@ class PieceDestructionEffect {
 
 // --- FUNCIONES DEL SISTEMA DE PORTALES DIMENSIONALES ---
 
-function setupPortalCanvas() {
-    // Crear canvas para efectos de portales si no existe
+// Modificar setupPortalCanvas para separar la creación del dimensionamiento
+function ensurePortalCanvasExists() {
     if (!portalCanvas) {
         portalCanvas = document.createElement('canvas');
         portalCanvas.id = 'portalCanvas';
@@ -3697,31 +4524,44 @@ function setupPortalCanvas() {
         portalCanvas.style.top = '0';
         portalCanvas.style.left = '0';
         portalCanvas.style.pointerEvents = 'none';
-        portalCanvas.style.zIndex = '1600'; // Más alto que los rayos
+        portalCanvas.style.zIndex = '1600';
         portalCanvas.style.background = 'transparent';
         document.body.appendChild(portalCanvas);
         portalCtx = portalCanvas.getContext('2d');
-        
         console.log("🌀 Canvas de portales creado y añadido al DOM");
     }
+}
+
+function resizePortalCanvas() {
+    if (!portalCanvas) return;
+
+    portalCanvas.width = document.documentElement.clientWidth;
+    portalCanvas.height = document.documentElement.clientHeight;
     
-    // Ajustar tamaño del canvas al tamaño de la ventana
-    portalCanvas.width = window.innerWidth;
-    portalCanvas.height = window.innerHeight;
-    
-    // Asegurar que el canvas esté visible
     portalCanvas.style.display = 'block';
     portalCanvas.style.visibility = 'visible';
     portalCanvas.style.opacity = '1';
     
-    console.log("🌀 Canvas de portales configurado:", portalCanvas.width, "x", portalCanvas.height);
+    console.log("🌀 Canvas de portales redimensionado/configurado:", portalCanvas.width, "x", portalCanvas.height);
+}
+
+function setupPortalCanvas() {
+    ensurePortalCanvasExists();
+    resizePortalCanvas();
 }
 
 function startDimensionalPortals(levelConfig) {
     if (!levelConfig.teleportInterval) return;
     
     console.log("🌀 Iniciando portales dimensionales cada", levelConfig.teleportInterval / 1000, "segundos");
-    setupPortalCanvas();
+    setupPortalCanvas(); // Llama a ensure y resize
+
+    // Añadir listener para resize SI AÚN NO EXISTE
+    if (!window.portalResizeListenerAttached) {
+        window.addEventListener('resize', resizePortalCanvas);
+        window.portalResizeListenerAttached = true;
+        console.log("🌀 Event listener para resize de portalCanvas añadido.");
+    }
     
     // Inicializar intensidad de portales
     teleportIntensity = 1;
@@ -3750,6 +4590,10 @@ function startDimensionalPortals(levelConfig) {
 }
 
 function triggerTeleportWarning(levelConfig) {
+    // DEBUG FLAGS
+    window.debugPortalCanvasOnce = true;
+    window.debugTeleportPieceOnce = true;
+
     if (!boardElement) return;
     
     // Calcular intensidad basada en tiempo transcurrido
@@ -3791,7 +4635,7 @@ function triggerTeleportWarning(levelConfig) {
 
 function scheduleNextTeleportCycle(levelConfig) {
     // Programar el próximo ciclo SOLO si el nivel sigue activo
-    if (currentSelectedLevelId === 6 && currentGameMode === 'levels') {
+    if (levelConfig.teleportInterval && currentGameMode === 'levels' && currentSelectedLevelId === levelConfig.id) {
         // Reducir ligeramente el intervalo con la intensidad
         const adjustedInterval = levelConfig.teleportInterval * (1 - (teleportIntensity - 1) * 0.15);
         console.log(`🌀 Próxima teletransportación en ${adjustedInterval / 1000} segundos (intervalo ajustado por intensidad)`);
@@ -3805,10 +4649,9 @@ function scheduleNextTeleportCycle(levelConfig) {
 function findPiecesToTeleport() {
     const pieces = [];
     
-    // Buscar todas las piezas que realmente existen en el tablero
     for (let r = 0; r < 10; r++) {
         for (let c = 0; c < 10; c++) {
-            if (board[r][c] === 1) { // Solo piezas normales (no cemento ni vacías)
+            if (board[r][c] === 1) { 
                 pieces.push({ row: r, col: c });
             }
         }
@@ -3816,18 +4659,35 @@ function findPiecesToTeleport() {
     
     console.log(`🌀 Piezas encontradas en el tablero: ${pieces.length}`);
     
-    // Si no hay piezas, no hacer nada
     if (pieces.length === 0) {
         console.log("🌀 No hay piezas en el tablero para teletransportar");
         return [];
     }
     
-    // Determinar cuántas piezas mover basado en la intensidad
-    const minPieces = Math.min(1, pieces.length); // Al menos 1 si hay piezas
-    const maxPieces = Math.min(Math.floor(1 + teleportIntensity * 2), pieces.length); // Máximo basado en intensidad
-    const numPiecesToMove = Math.floor(Math.random() * (maxPieces - minPieces + 1)) + minPieces;
+    // Determinar cuántas piezas mover basado en la intensidad (LÓGICA MEJORADA)
+    let numPiecesToMove;
+    if (pieces.length === 1) {
+        numPiecesToMove = 1;
+    } else {
+        // Con intensidad 1 (inicio), mueve entre 1 y ~2 piezas.
+        // Con intensidad 1.5, mueve entre 1 y ~3 piezas (podría ser 2-3).
+        // Con intensidad 2, mueve entre 2 y ~5 piezas (podría ser 3-5).
+        const minBase = Math.floor(teleportIntensity * 0.8); // Ajustar multiplicador para mínimo deseado
+        const maxBase = Math.floor(teleportIntensity * 2.0); // Ajustar multiplicador para máximo deseado
+
+        let minToMove = Math.max(1, minBase); // Siempre al menos 1 si hay piezas
+        minToMove = Math.min(minToMove, pieces.length); // No más que las piezas disponibles
+        
+        let maxToMove = Math.max(minToMove, maxBase); // El máximo no puede ser menor que el mínimo
+        maxToMove = Math.min(maxToMove, pieces.length); // No más que las piezas disponibles
+        
+        if (minToMove >= maxToMove) {
+            numPiecesToMove = minToMove;
+        } else {
+            numPiecesToMove = Math.floor(Math.random() * (maxToMove - minToMove + 1)) + minToMove;
+        }
+    }
     
-    // Seleccionar piezas aleatoriamente de las que realmente existen
     const selectedPieces = [];
     const availablePieces = [...pieces]; // Copia del array
     
@@ -3841,24 +4701,23 @@ function findPiecesToTeleport() {
 }
 
 function showTeleportWarning(piecesToMove) {
-    // Marcar visualmente las piezas que se van a mover
     piecesToMove.forEach(piece => {
         const cellElement = boardElement.querySelector(`[data-row='${piece.row}'][data-col='${piece.col}']`);
         if (cellElement) {
             cellElement.classList.add('portal-warning');
             
-            // Crear efecto de portal de advertencia
-            const rect = cellElement.getBoundingClientRect();
-            const centerX = rect.left + rect.width / 2;
-            const centerY = rect.top + rect.height / 2;
-            
-            const warningPortal = new PortalWarningEffect(centerX, centerY);
-            portalEffects.push(warningPortal);
+            // YA NO CREAR PortalWarningEffect para el canvas aquí
+            // const rect = cellElement.getBoundingClientRect();
+            // const centerX = rect.left + rect.width / 2;
+            // const centerY = rect.top + rect.height / 2;
+            // const warningPortal = new PortalWarningEffect(centerX, centerY);
+            // portalEffects.push(warningPortal); 
         }
     });
     
-    // Crear efecto de distorsión dimensional
-    createDimensionalDistortion();
+    // Considerar si createDimensionalDistortion() se mantiene o se elimina de la fase de advertencia.
+    // Por ahora, lo mantenemos como un efecto general del canvas durante la advertencia.
+    createDimensionalDistortion(); 
 }
 
 function executeTeleportation(piecesToMove, levelConfig) {
@@ -4123,72 +4982,55 @@ function animatePortalEffects() {
         drawTeleportWarningEffects();
     }
     
-    // Continuar animación si hay efectos activos O si estamos en el Nivel 6
-    if (hasActiveEffects || isTeleportWarningActive || currentSelectedLevelId === 6) {
+    // Continuar animación si hay efectos definidos en hasActiveEffects
+    if (hasActiveEffects) {
         teleportAnimationId = requestAnimationFrame(animatePortalEffects);
     } else {
         // Asegurar limpieza final del canvas
-        portalCtx.clearRect(0, 0, portalCanvas.width, portalCanvas.height);
+        if (portalCtx && portalCanvas) {
+            portalCtx.clearRect(0, 0, portalCanvas.width, portalCanvas.height);
+        }
         teleportAnimationId = null;
-        console.log("🧹 Canvas de portales limpiado completamente - animación detenida");
+        console.log("🧹 Canvas de portales limpiado completamente - animación detenida porque no hay efectos.");
     }
 }
 
 function drawTeleportWarningEffects() {
-    if (!piecesToTeleport || piecesToTeleport.length === 0 || !portalCtx) return;
+    if (!piecesToTeleport || piecesToTeleport.length === 0 || !portalCtx || !portalCanvas) return;
     
-    const time = Date.now() * 0.005;
-    
+    // console.log("DEBUG: drawTeleportWarningEffects está siendo llamada, pero no dibujará nada en el canvas para la advertencia inicial.");
+
+    // Las siguientes líneas son para mantener los logs de depuración si aún son necesarios
+    // para entender el estado del sistema en este punto, aunque no se dibuje.
+    // Si ya no son necesarios, se pueden eliminar.
+    const time = Date.now() * 0.008; 
+    if (window.debugPortalCanvasOnce) {
+        console.log("DEBUG Portal Canvas Rect (drawTeleportWarningEffects):", portalCanvas.getBoundingClientRect());
+        console.log("DEBUG window scroll X,Y (drawTeleportWarningEffects):", window.scrollX, window.scrollY);
+        window.debugPortalCanvasOnce = false; 
+    }
+
     piecesToTeleport.forEach(piece => {
         const cellElement = boardElement.querySelector(`[data-row='${piece.row}'][data-col='${piece.col}']`);
-        if (!cellElement) return;
-        
-        const cellRect = cellElement.getBoundingClientRect();
-        const centerX = cellRect.left + cellRect.width / 2;
-        const centerY = cellRect.top + cellRect.height / 2;
-        
-        // Efecto de portal pulsante
-        const pulse = Math.sin(time + piece.row + piece.col) * 0.5 + 0.5;
-        const radius = 15 + pulse * 10;
-        
-        portalCtx.save();
-        portalCtx.globalAlpha = 0.8;
-        
-        // Anillo exterior
-        portalCtx.strokeStyle = `hsl(${280 + pulse * 40}, 100%, 70%)`;
-        portalCtx.lineWidth = 3;
-        portalCtx.shadowColor = portalCtx.strokeStyle;
-        portalCtx.shadowBlur = 15;
-        
-        portalCtx.beginPath();
-        portalCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-        portalCtx.stroke();
-        
-        // Anillo interior
-        portalCtx.strokeStyle = `hsl(${320 + pulse * 40}, 100%, 80%)`;
-        portalCtx.lineWidth = 2;
-        portalCtx.beginPath();
-        portalCtx.arc(centerX, centerY, radius * 0.6, 0, Math.PI * 2);
-        portalCtx.stroke();
-        
-        // Espirales de energía
-        for (let i = 0; i < 3; i++) {
-            const spiralTime = time + i * 2;
-            const spiralRadius = radius * 0.8;
-            const angle = spiralTime * 2;
-            
-            const x = centerX + Math.cos(angle) * spiralRadius * pulse;
-            const y = centerY + Math.sin(angle) * spiralRadius * pulse;
-            
-            portalCtx.fillStyle = `hsl(${300 + i * 20}, 100%, 80%)`;
-            portalCtx.shadowBlur = 10;
-            portalCtx.beginPath();
-            portalCtx.arc(x, y, 2, 0, Math.PI * 2);
-            portalCtx.fill();
+        if (!cellElement) {
+            return;
         }
-        
-        portalCtx.restore();
+        const cellRect = cellElement.getBoundingClientRect(); 
+        if (cellRect.width === 0 && cellRect.height === 0) {
+            return; 
+        }
+
+        if (piece === piecesToTeleport[0] && window.debugTeleportPieceOnce) {
+            const centerX = cellRect.left + cellRect.width / 2;
+            const centerY = cellRect.top + cellRect.height / 2;
+            console.log(`DEBUG Cell [${piece.row},${piece.col}] Rect (drawTeleportWarningEffects):`, cellRect);
+            console.log(`DEBUG Calculated centerX, centerY (drawTeleportWarningEffects): ${centerX}, ${centerY}`);
+            window.debugTeleportPieceOnce = false; 
+        }
     });
+
+    // No hay código de dibujo aquí para el efecto de advertencia inicial en la celda.
+    // Todo el resaltado de la celda se confía al CSS '.portal-warning'.
 }
 
 function stopDimensionalPortals() {
@@ -4234,6 +5076,13 @@ function cleanupPortalSystem() {
         portalCanvas = null;
         portalCtx = null;
     }
+
+    // Quitar listener de resize SI EXISTE
+    if (window.portalResizeListenerAttached) {
+        window.removeEventListener('resize', resizePortalCanvas);
+        window.portalResizeListenerAttached = false;
+        console.log("🌀 Event listener para resize de portalCanvas eliminado.");
+    }
     
     console.log("🌀 Sistema de portales limpiado completamente");
 }
@@ -4246,22 +5095,26 @@ class TeleportationPortal {
         this.y = y;
         this.type = type; // 'exit' o 'entry'
         this.pieceColor = pieceColor;
-        this.life = type === 'exit' ? 60 : 80; // Portales de entrada duran más
+        this.life = type === 'exit' ? 70 : 90; // Aumentar un poco la vida
         this.maxLife = this.life;
         this.radius = 0;
-        this.maxRadius = 30;
-        this.rotation = 0;
-        this.rotationSpeed = type === 'exit' ? 0.1 : -0.1;
-        this.pulsePhase = 0;
+        this.maxRadius = 35; // Radio máximo un poco más grande
+        this.rotation = Math.random() * Math.PI * 2; // Rotación inicial aleatoria
+        this.rotationSpeed = (type === 'exit' ? 0.15 : -0.15) * (Math.random() * 0.5 + 0.75); // Velocidad de rotación variable
+        this.pulsePhase = Math.random() * Math.PI;
+        this.lineWidth = 2;
+        this.sparks = []; // Para destellos
+
+        // Crear espirales de energía (mantenemos algunas)
         this.spirals = [];
-        
-        // Crear espirales de energía
-        for (let i = 0; i < 6; i++) {
+        const numSpirals = 5;
+        for (let i = 0; i < numSpirals; i++) {
             this.spirals.push({
-                angle: (i / 6) * Math.PI * 2,
-                radius: 0,
-                speed: 0.15 + Math.random() * 0.1,
-                phase: Math.random() * Math.PI * 2
+                angle: (i / numSpirals) * Math.PI * 2 + Math.random() * 0.5,
+                radiusFactor: 0.6 + Math.random() * 0.3, // Radio variable
+                speed: (0.1 + Math.random() * 0.1) * (type === 'exit' ? 1 : -1),
+                phase: Math.random() * Math.PI * 2,
+                length: 5 + Math.random() * 5
             });
         }
     }
@@ -4269,91 +5122,135 @@ class TeleportationPortal {
     update() {
         this.life--;
         this.rotation += this.rotationSpeed;
-        this.pulsePhase += 0.1;
-        
-        // Animación de apertura/cierre
+        this.pulsePhase += 0.15; // Pulso más rápido
+        this.lineWidth = 2 + Math.sin(this.pulsePhase * 2) * 1.5; // Grosor de línea pulsante
+
+        const lifeRatio = this.life / this.maxLife;
+
         if (this.type === 'exit') {
-            if (this.life > this.maxLife * 0.7) {
-                // Apertura rápida
-                this.radius = Math.min(this.maxRadius, this.radius + 3);
+            if (lifeRatio > 0.6) {
+                this.radius = Math.min(this.maxRadius, this.radius + this.maxRadius * 0.1);
             } else {
-                // Cierre gradual
-                this.radius = Math.max(0, this.radius - 1);
+                this.radius = Math.max(0, this.radius - this.maxRadius * 0.08);
             }
-        } else {
-            // Portal de entrada: apertura gradual
-            if (this.life > this.maxLife * 0.5) {
-                this.radius = Math.min(this.maxRadius, this.radius + 2);
+        } else { // 'entry'
+            if (lifeRatio > 0.5) {
+                this.radius = Math.min(this.maxRadius, this.radius + this.maxRadius * 0.08);
             } else {
-                this.radius = Math.max(0, this.radius - 1.5);
+                this.radius = Math.max(0, this.radius - this.maxRadius * 0.1);
             }
         }
         
-        // Actualizar espirales
         this.spirals.forEach(spiral => {
             spiral.angle += spiral.speed;
-            spiral.radius = this.radius * 0.8;
             spiral.phase += 0.2;
         });
+
+        // Añadir chispas aleatoriamente
+        if (Math.random() < 0.4 && this.radius > 5) { // Más chispas
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 2 + Math.random() * 3;
+            this.sparks.push({
+                x: Math.cos(angle) * this.radius * 0.9,
+                y: Math.sin(angle) * this.radius * 0.9,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                life: 20 + Math.random() * 20,
+                color: this.type === 'exit' ? `hsl(${280 + Math.random()*40}, 100%, 75%)` : `hsl(${180 + Math.random()*40}, 100%, 75%)`
+            });
+        }
+
+        // Actualizar chispas
+        for (let i = this.sparks.length - 1; i >= 0; i--) {
+            const s = this.sparks[i];
+            s.x += s.vx;
+            s.y += s.vy;
+            s.life--;
+            s.vx *= 0.95;
+            s.vy *= 0.95;
+            if (s.life <= 0) {
+                this.sparks.splice(i, 1);
+            }
+        }
         
-        return this.life > 0 && this.radius > 0;
+        return this.life > 0;
     }
     
     draw() {
-        if (!portalCtx || this.radius <= 0) return;
-        
+        if (!portalCtx) return;
+        console.log(`[TeleportEffect] Drawing TeleportationPortal (type: ${this.type}) at x:${this.x.toFixed(1)}, y:${this.y.toFixed(1)}, radius:${this.radius.toFixed(1)}, alpha:${this.alpha.toFixed(2)}`);
+
         portalCtx.save();
+        portalCtx.globalAlpha = this.alpha;
         portalCtx.translate(this.x, this.y);
         portalCtx.rotate(this.rotation);
         
-        const alpha = Math.min(1, this.life / this.maxLife);
-        const pulse = Math.sin(this.pulsePhase) * 0.3 + 0.7;
+        const alpha = Math.min(1, (this.life / this.maxLife) * 1.5); // Puede ser > 1 al inicio para más brillo
+        const pulse = Math.sin(this.pulsePhase) * 0.2 + 0.8; // Pulso sutil del radio general
+        const effectiveRadius = this.radius * pulse;
+
+        // Dibujar chispas primero (detrás del portal)
+        portalCtx.globalCompositeOperation = 'lighter';
+        this.sparks.forEach(s => {
+            portalCtx.fillStyle = s.color;
+            portalCtx.beginPath();
+            portalCtx.arc(s.x, s.y, Math.max(0, s.life / 10 + 1), 0, Math.PI * 2);
+            portalCtx.fill();
+        });
+        portalCtx.globalCompositeOperation = 'source-over';
         
         // Gradiente radial del portal
-        const gradient = portalCtx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
-        if (this.type === 'exit') {
-            gradient.addColorStop(0, `rgba(255, 100, 255, ${alpha * 0.8})`);
-            gradient.addColorStop(0.5, `rgba(150, 50, 255, ${alpha * 0.6})`);
-            gradient.addColorStop(1, `rgba(100, 0, 200, ${alpha * 0.3})`);
-        } else {
-            gradient.addColorStop(0, `rgba(100, 255, 255, ${alpha * 0.8})`);
-            gradient.addColorStop(0.5, `rgba(50, 150, 255, ${alpha * 0.6})`);
-            gradient.addColorStop(1, `rgba(0, 100, 200, ${alpha * 0.3})`);
-        }
+        const gradient = portalCtx.createRadialGradient(0, 0, 0, 0, 0, effectiveRadius);
+        const colorBase = this.type === 'exit' ? 290 : 200; // Tonos morados para salida, azules para entrada
+
+        gradient.addColorStop(0, `hsla(${colorBase}, 100%, 70%, ${alpha * 0.8})`);
+        gradient.addColorStop(0.6, `hsla(${colorBase + 20}, 100%, 60%, ${alpha * 0.5})`);
+        gradient.addColorStop(1, `hsla(${colorBase + 40}, 100%, 50%, ${alpha * 0.2})`);
         
-        // Dibujar portal base
         portalCtx.fillStyle = gradient;
         portalCtx.beginPath();
-        portalCtx.arc(0, 0, this.radius * pulse, 0, Math.PI * 2);
+        portalCtx.arc(0, 0, effectiveRadius, 0, Math.PI * 2);
         portalCtx.fill();
         
         // Anillo exterior brillante
-        portalCtx.strokeStyle = this.type === 'exit' ? 
-            `rgba(255, 150, 255, ${alpha})` : 
-            `rgba(150, 255, 255, ${alpha})`;
-        portalCtx.lineWidth = 3;
+        portalCtx.strokeStyle = `hsla(${colorBase - 20}, 100%, 80%, ${alpha * 0.9})`;
+        portalCtx.lineWidth = this.lineWidth; // Usa el lineWidth pulsante
         portalCtx.shadowColor = portalCtx.strokeStyle;
-        portalCtx.shadowBlur = 15;
+        portalCtx.shadowBlur = 20 + Math.sin(this.pulsePhase) * 10;
         portalCtx.beginPath();
-        portalCtx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        portalCtx.arc(0, 0, effectiveRadius, 0, Math.PI * 2);
+        portalCtx.stroke();
+
+        // Anillo interior (más sutil)
+        portalCtx.strokeStyle = `hsla(${colorBase}, 100%, 90%, ${alpha * 0.5})`;
+        portalCtx.lineWidth = Math.max(1, this.lineWidth * 0.5);
+        portalCtx.shadowBlur = 10;
+        portalCtx.beginPath();
+        portalCtx.arc(0, 0, effectiveRadius * 0.7, 0, Math.PI * 2);
         portalCtx.stroke();
         
         // Dibujar espirales de energía
+        portalCtx.globalCompositeOperation = 'lighter';
         this.spirals.forEach((spiral, index) => {
-            const spiralAlpha = alpha * (Math.sin(spiral.phase) * 0.5 + 0.5);
-            portalCtx.globalAlpha = spiralAlpha;
+            const spiralAlpha = alpha * (Math.sin(spiral.phase * 2) * 0.3 + 0.7);
+            portalCtx.globalAlpha = Math.max(0, spiralAlpha);
             
-            const x = Math.cos(spiral.angle) * spiral.radius;
-            const y = Math.sin(spiral.angle) * spiral.radius;
+            const x = Math.cos(spiral.angle) * effectiveRadius * spiral.radiusFactor;
+            const y = Math.sin(spiral.angle) * effectiveRadius * spiral.radiusFactor;
             
-            portalCtx.fillStyle = this.type === 'exit' ? 
-                `hsl(${280 + index * 10}, 100%, 80%)` : 
-                `hsl(${180 + index * 10}, 100%, 80%)`;
+            portalCtx.fillStyle = `hsla(${colorBase + index * 15}, 100%, ${75 + Math.sin(spiral.phase)*10}%, ${0.6 + Math.sin(spiral.phase)*0.3})`;
             portalCtx.shadowBlur = 8;
             portalCtx.beginPath();
-            portalCtx.arc(x, y, 3, 0, Math.PI * 2);
+            portalCtx.moveTo(x, y);
+            for(let j = 0; j < 5; j++) {
+                const tailX = x + Math.cos(spiral.angle + Math.PI + j*0.1) * spiral.length * (spiralAlpha * 0.5 + 0.5) * (j/5);
+                const tailY = y + Math.sin(spiral.angle + Math.PI + j*0.1) * spiral.length * (spiralAlpha * 0.5 + 0.5) * (j/5);
+                portalCtx.lineTo(tailX, tailY);
+            }
+            //portalCtx.arc(x, y, 2 + spiralAlpha * 2, 0, Math.PI * 2);
             portalCtx.fill();
         });
+        portalCtx.globalCompositeOperation = 'source-over';
         
         portalCtx.restore();
     }
@@ -4427,12 +5324,11 @@ class DimensionalTunnel {
     }
     
     draw() {
-        if (!portalCtx || this.segments.length === 0) return;
-        
-        const alpha = Math.min(1, this.life / this.maxLife);
-        
+        if (!portalCtx || this.segments.length === 0) return; // Mantener la guarda original si es relevante
+        console.log(`[TeleportEffect] Drawing DimensionalTunnel from ${this.startX.toFixed(1)},${this.startY.toFixed(1)} to ${this.endX.toFixed(1)},${this.endY.toFixed(1)}, alpha:${this.alpha.toFixed(2)}, segments: ${this.segments.length}`);
+
         portalCtx.save();
-        portalCtx.globalAlpha = alpha;
+        portalCtx.globalAlpha = this.alpha;
         
         // Dibujar túnel principal
         portalCtx.strokeStyle = `rgba(200, 100, 255, ${alpha * 0.6})`;
@@ -4697,8 +5593,12 @@ class DimensionalWave {
 
 // Función para verificar si se pueden reanudar las teletransportaciones
 function checkAndResumeTeleportations() {
-    // Solo verificar si estamos en el Nivel 6 y el sistema está activo
-    if (currentSelectedLevelId !== 6 || !portalCanvas) return;
+    const currentLevelConfig = levelsConfiguration[currentSelectedLevelId];
+
+    // Solo verificar si el nivel actual usa portales y el canvas está activo
+    if (!currentLevelConfig || !currentLevelConfig.teleportInterval || !portalCanvas) {
+        return;
+    }
     
     // Contar piezas en el tablero
     let piecesCount = 0;
@@ -4715,13 +5615,516 @@ function checkAndResumeTeleportations() {
     // Si hay piezas y no hay teletransportación programada, reanudar
     if (piecesCount > 0 && !teleportTimeoutId && !isTeleportWarningActive) {
         console.log("🌀 Reanudando teletransportaciones - hay piezas disponibles");
-        const levelConfig = levelsConfiguration[6];
-        if (levelConfig) {
-            // Programar próxima teletransportación en 3 segundos
-            teleportTimeoutId = setTimeout(() => {
-                triggerTeleportWarning(levelConfig);
-            }, 3000);
+        // Usar la configuración del nivel actual
+        teleportTimeoutId = setTimeout(() => {
+            // Pasar la configuración del nivel actual a triggerTeleportWarning
+            triggerTeleportWarning(currentLevelConfig);
+        }, 3000); // Considerar si este delay de 3000ms debería ser configurable
+    }
+}
+
+// --- FUNCIONES SIMPLIFICADAS PARA DISPOSITIVOS DE BAJO RENDIMIENTO ---
+
+// Versión simplificada de lluvia de cemento (sin animaciones complejas)
+function startSimplifiedCementRain(levelConfig) {
+    console.log("🔧 Iniciando lluvia de cemento simplificada...");
+    
+    const dropSimplifiedCement = () => {
+        if (currentGameMode !== 'levels' || currentSelectedLevelId !== levelConfig.id) {
+            return; // Salir si ya no estamos en el nivel correcto
+        }
+        
+        // Encontrar posición aleatoria válida
+        const availablePositions = [];
+        for (let r = 0; r < numRows; r++) {
+            for (let c = 0; c < numCols; c++) {
+                if (board[r][c] === 0) { // Solo celdas vacías
+                    availablePositions.push({ row: r, col: c });
+                }
+            }
+        }
+        
+        if (availablePositions.length > 0) {
+            const randomPos = availablePositions[Math.floor(Math.random() * availablePositions.length)];
+            
+            // Colocar cemento directamente sin animación
+            board[randomPos.row][randomPos.col] = 3;
+            const cellElement = boardElement.querySelector(`[data-row='${randomPos.row}'][data-col='${randomPos.col}']`);
+            if (cellElement) {
+                cellElement.classList.add('cement-block');
+                cellElement.dataset.cementBlock = 'true';
+                
+                // Efecto visual simple
+                cellElement.style.transform = 'scale(1.2)';
+                setTimeout(() => {
+                    cellElement.style.transform = '';
+                }, 200);
+            }
+            
+            console.log(`Cemento colocado en (${randomPos.row}, ${randomPos.col}) - Modo simplificado`);
+        }
+        
+        // Programar siguiente caída
+        const nextInterval = levelConfig.cementRainInterval + (Math.random() * 2000);
+        cementRainTimeoutId = setTimeout(dropSimplifiedCement, nextInterval);
+    };
+    
+    // Iniciar primera caída
+    const initialDelay = 3000 + (Math.random() * 2000);
+    cementRainTimeoutId = setTimeout(dropSimplifiedCement, initialDelay);
+}
+
+// Versión simplificada de tormenta eléctrica (efectos reducidos)
+function startSimplifiedLightningStorm(levelConfig) {
+    console.log("🔧 Iniciando tormenta eléctrica simplificada...");
+    
+    const triggerSimplifiedLightning = () => {
+        if (currentGameMode !== 'levels' || currentSelectedLevelId !== levelConfig.id) {
+            return;
+        }
+        
+        // Encontrar piezas para destruir
+        const piecesToDestroy = [];
+        for (let r = 0; r < numRows; r++) {
+            for (let c = 0; c < numCols; c++) {
+                if (board[r][c] === 1) { // Solo piezas normales
+                    piecesToDestroy.push({ row: r, col: c });
+                }
+            }
+        }
+        
+        if (piecesToDestroy.length > 0) {
+            // Seleccionar hasta 3 piezas aleatoriamente
+            const maxPieces = Math.min(3, piecesToDestroy.length);
+            const selectedPieces = [];
+            
+            for (let i = 0; i < maxPieces; i++) {
+                const randomIndex = Math.floor(Math.random() * piecesToDestroy.length);
+                selectedPieces.push(piecesToDestroy.splice(randomIndex, 1)[0]);
+            }
+            
+            // Destruir piezas con efecto visual simple
+            selectedPieces.forEach(piece => {
+                board[piece.row][piece.col] = 0;
+                const cellElement = boardElement.querySelector(`[data-row='${piece.row}'][data-col='${piece.col}']`);
+                if (cellElement) {
+                    // Efecto visual simple
+                    cellElement.style.backgroundColor = '#ffff00';
+                    cellElement.style.boxShadow = '0 0 10px #ffff00';
+                    
+                    setTimeout(() => {
+                        cellElement.classList.remove('piece-block');
+                        cellElement.style.backgroundColor = '';
+                        cellElement.style.boxShadow = '';
+                        delete cellElement.dataset.pieceColor;
+                    }, 300);
+                }
+            });
+            
+            console.log(`⚡ Rayo simplificado destruyó ${selectedPieces.length} piezas`);
+        }
+        
+        // Programar siguiente rayo
+        const nextInterval = levelConfig.lightningInterval + (Math.random() * 3000);
+        lightningTimeoutId = setTimeout(triggerSimplifiedLightning, nextInterval);
+    };
+    
+    // Iniciar primera tormenta
+    const initialDelay = 5000 + (Math.random() * 3000);
+    lightningTimeoutId = setTimeout(triggerSimplifiedLightning, initialDelay);
+}
+
+// Versión simplificada de portales dimensionales (sin efectos complejos)
+function startSimplifiedDimensionalPortals(levelConfig) {
+    console.log("🔧 Iniciando portales dimensionales simplificados...");
+    
+    const triggerSimplifiedTeleport = () => {
+        if (currentGameMode !== 'levels' || currentSelectedLevelId !== levelConfig.id) {
+            return;
+        }
+        
+        // Encontrar piezas para teletransportar
+        const availablePieces = [];
+        for (let r = 0; r < numRows; r++) {
+            for (let c = 0; c < numCols; c++) {
+                if (board[r][c] === 1) { // Solo piezas normales
+                    availablePieces.push({ row: r, col: c });
+                }
+            }
+        }
+        
+        if (availablePieces.length >= 2) {
+            // Seleccionar 1-2 piezas aleatoriamente
+            const numPieces = Math.min(2, Math.floor(Math.random() * 2) + 1);
+            const selectedPieces = [];
+            
+            for (let i = 0; i < numPieces; i++) {
+                const randomIndex = Math.floor(Math.random() * availablePieces.length);
+                selectedPieces.push(availablePieces.splice(randomIndex, 1)[0]);
+            }
+            
+            // Teletransportar cada pieza
+            selectedPieces.forEach(piece => {
+                // Encontrar nueva posición
+                const emptyPositions = [];
+                for (let r = 0; r < numRows; r++) {
+                    for (let c = 0; c < numCols; c++) {
+                        if (board[r][c] === 0 && (r !== piece.row || c !== piece.col)) {
+                            emptyPositions.push({ row: r, col: c });
+                        }
+                    }
+                }
+                
+                if (emptyPositions.length > 0) {
+                    const newPos = emptyPositions[Math.floor(Math.random() * emptyPositions.length)];
+                    const oldCellElement = boardElement.querySelector(`[data-row='${piece.row}'][data-col='${piece.col}']`);
+                    const newCellElement = boardElement.querySelector(`[data-row='${newPos.row}'][data-col='${newPos.col}']`);
+                    
+                    if (oldCellElement && newCellElement) {
+                        // Obtener color de la pieza
+                        const pieceColor = oldCellElement.dataset.pieceColor || '#8A2BE2';
+                        
+                        // Efecto visual simple en posición original
+                        oldCellElement.style.backgroundColor = '#00ffff';
+                        oldCellElement.style.transform = 'scale(0.8)';
+                        
+                        setTimeout(() => {
+                            // Limpiar posición original
+                            board[piece.row][piece.col] = 0;
+                            oldCellElement.classList.remove('piece-block');
+                            oldCellElement.style.backgroundColor = '';
+                            oldCellElement.style.transform = '';
+                            delete oldCellElement.dataset.pieceColor;
+                            
+                            // Colocar en nueva posición
+                            board[newPos.row][newPos.col] = 1;
+                            newCellElement.classList.add('piece-block');
+                            newCellElement.style.backgroundColor = pieceColor;
+                            newCellElement.dataset.pieceColor = pieceColor;
+                            
+                            // Efecto visual en nueva posición
+                            newCellElement.style.backgroundColor = '#00ffff';
+                            newCellElement.style.transform = 'scale(1.2)';
+                            
+                            setTimeout(() => {
+                                newCellElement.style.backgroundColor = pieceColor;
+                                newCellElement.style.transform = '';
+                            }, 200);
+                            
+                        }, 300);
+                    }
+                    
+                    console.log(`🌀 Pieza teletransportada de (${piece.row},${piece.col}) a (${newPos.row},${newPos.col}) - Modo simplificado`);
+                }
+            });
+        }
+        
+        // Programar siguiente teletransportación
+        const nextInterval = levelConfig.teleportInterval + (Math.random() * 4000);
+        teleportTimeoutId = setTimeout(triggerSimplifiedTeleport, nextInterval);
+    };
+    
+    // Iniciar primera teletransportación
+    const initialDelay = 8000 + (Math.random() * 4000);
+    teleportTimeoutId = setTimeout(triggerSimplifiedTeleport, initialDelay);
+}
+
+// Función para optimizar partículas basada en el rendimiento del dispositivo
+function createOptimizedParticles(x, y, color, count = 10) {
+    if (!devicePerformance.shouldUseEffects()) {
+        return; // No crear partículas en dispositivos de bajo rendimiento
+    }
+    
+    const maxParticles = devicePerformance.getMaxParticles();
+    const actualCount = Math.min(count, Math.floor(maxParticles / 4));
+    
+    for (let i = 0; i < actualCount; i++) {
+        if (particles.length < maxParticles) {
+            particles.push({
+                x: x + (Math.random() - 0.5) * 20,
+                y: y + (Math.random() - 0.5) * 20,
+                vx: (Math.random() - 0.5) * 4,
+                vy: (Math.random() - 0.5) * 4 - 2,
+                life: Math.random() * 30 + 20,
+                maxLife: Math.random() * 30 + 20,
+                color: color,
+                size: Math.random() * 3 + 1
+            });
         }
     }
 }
+
+// Función para ajustar la calidad de animaciones basada en el rendimiento
+function getOptimizedAnimationDuration(baseDuration) {
+    const quality = devicePerformance.getAnimationQuality();
+    
+    switch (quality) {
+        case 'low':
+            return Math.max(100, baseDuration * 0.5); // Animaciones más rápidas
+        case 'medium':
+            return baseDuration * 0.75;
+        case 'high':
+        default:
+            return baseDuration;
+    }
+}
+
+// Función para verificar si se deben usar sombras
+function shouldUseShadows() {
+    return devicePerformance.adaptiveSettings.shadowsEnabled;
+}
+
+// Función para obtener la resolución optimizada del canvas
+function getOptimizedCanvasSize(baseWidth, baseHeight) {
+    const resolution = devicePerformance.getCanvasResolution();
+    return {
+        width: Math.floor(baseWidth * resolution),
+        height: Math.floor(baseHeight * resolution)
+    };
+}
+
+// --- FIN FUNCIONES SIMPLIFICADAS ---
+
+// --- FUNCIONES DE INTERFAZ DE RENDIMIENTO ---
+
+// Función para mostrar información de rendimiento al usuario
+function showPerformanceInfo() {
+    const report = devicePerformance.getPerformanceReport();
+    
+    const modal = document.createElement('div');
+    modal.className = 'performance-info-modal';
+    modal.innerHTML = `
+        <div class="performance-info-content">
+            <h2>📱 Información de Rendimiento</h2>
+            <div class="performance-section">
+                <h3>🔍 Detección del Dispositivo</h3>
+                <p><strong>Nivel de Rendimiento:</strong> <span class="performance-level ${report.level}">${report.level.toUpperCase()}</span></p>
+                <p><strong>Núcleos de CPU:</strong> ${report.metrics.cores}</p>
+                <p><strong>Memoria RAM:</strong> ${report.metrics.memory} GB</p>
+                <p><strong>GPU:</strong> ${report.metrics.gpuTier || 'No detectada'}</p>
+                <p><strong>Conexión:</strong> ${getConnectionTypeText(report.metrics.connection)}</p>
+                <p><strong>FPS Actual:</strong> ${report.metrics.frameRate}</p>
+                ${report.metrics.batteryLevel ? `<p><strong>Batería:</strong> ${Math.round(report.metrics.batteryLevel * 100)}%</p>` : ''}
+            </div>
+            
+            <div class="performance-section">
+                <h3>🧪 Resultados de Benchmarks</h3>
+                <p><strong>Rendimiento Canvas:</strong> ${Math.round(report.benchmarks.canvasPerformance)}/100</p>
+                <p><strong>Rendimiento Animaciones:</strong> ${Math.round(report.benchmarks.animationPerformance)}/100</p>
+                <p><strong>Uso de Memoria:</strong> ${Math.round(report.benchmarks.memoryUsage)}/100</p>
+                <p><strong>Puntuación General:</strong> ${Math.round(report.benchmarks.overallScore)}/100</p>
+            </div>
+            
+            <div class="performance-section">
+                <h3>⚙️ Configuraciones Aplicadas</h3>
+                <p><strong>Máximo de Partículas:</strong> ${report.settings.maxParticles}</p>
+                <p><strong>Calidad de Animación:</strong> ${report.settings.animationQuality}</p>
+                <p><strong>Efectos Habilitados:</strong> ${report.settings.effectsEnabled ? 'Sí' : 'No'}</p>
+                <p><strong>Sombras:</strong> ${report.settings.shadowsEnabled ? 'Sí' : 'No'}</p>
+                <p><strong>FPS Objetivo:</strong> ${report.settings.frameRateTarget}</p>
+                <p><strong>Resolución Canvas:</strong> ${Math.round(report.settings.canvasResolution * 100)}%</p>
+            </div>
+            
+            <div class="performance-controls">
+                <button onclick="forcePerformanceLevel('low')" class="perf-btn low">Forzar Bajo</button>
+                <button onclick="forcePerformanceLevel('medium')" class="perf-btn medium">Forzar Medio</button>
+                <button onclick="forcePerformanceLevel('high')" class="perf-btn high">Forzar Alto</button>
+                <button onclick="resetPerformanceDetection()" class="perf-btn reset">Auto-Detectar</button>
+            </div>
+            
+            <button onclick="closePerformanceInfo()" class="close-performance-btn">Cerrar</button>
+        </div>
+    `;
+    
+    // Agregar estilos
+    const style = document.createElement('style');
+    style.textContent = `
+        .performance-info-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            font-family: Arial, sans-serif;
+        }
+        
+        .performance-info-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            border-radius: 15px;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            color: white;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+        
+        .performance-info-content h2 {
+            margin-top: 0;
+            text-align: center;
+            color: #fff;
+        }
+        
+        .performance-section {
+            margin: 15px 0;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+        
+        .performance-section h3 {
+            margin-top: 0;
+            color: #ffd700;
+        }
+        
+        .performance-level.low { color: #ff6b6b; }
+        .performance-level.medium { color: #feca57; }
+        .performance-level.high { color: #48dbfb; }
+        
+        .performance-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 15px 0;
+        }
+        
+        .perf-btn {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .perf-btn.low { background: #ff6b6b; color: white; }
+        .perf-btn.medium { background: #feca57; color: black; }
+        .perf-btn.high { background: #48dbfb; color: black; }
+        .perf-btn.reset { background: #a55eea; color: white; }
+        
+        .perf-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .close-performance-btn {
+            width: 100%;
+            padding: 12px;
+            background: #ff4757;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        
+        .close-performance-btn:hover {
+            background: #ff3838;
+        }
+    `;
+    
+    document.head.appendChild(style);
+    document.body.appendChild(modal);
+}
+
+// Función para cerrar la información de rendimiento
+function closePerformanceInfo() {
+    const modal = document.querySelector('.performance-info-modal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+// Función para forzar un nivel de rendimiento específico
+function forcePerformanceLevel(level) {
+    devicePerformance.performanceLevel = level;
+    devicePerformance.configureAdaptiveSettings();
+    console.log(`🔧 Nivel de rendimiento forzado a: ${level.toUpperCase()}`);
+    
+    // Actualizar la información mostrada
+    closePerformanceInfo();
+    setTimeout(() => showPerformanceInfo(), 100);
+}
+
+// Función para resetear la detección automática
+function resetPerformanceDetection() {
+    devicePerformance.calculatePerformanceLevel();
+    devicePerformance.configureAdaptiveSettings();
+    console.log("🔄 Detección automática de rendimiento restablecida");
+    
+    // Actualizar la información mostrada
+    closePerformanceInfo();
+    setTimeout(() => showPerformanceInfo(), 100);
+}
+
+// Función auxiliar para obtener texto de tipo de conexión
+function getConnectionTypeText(connectionLevel) {
+    switch (connectionLevel) {
+        case 1: return 'Muy Lenta (2G)';
+        case 2: return 'Lenta (2G)';
+        case 3: return 'Media (3G)';
+        case 4: return 'Rápida (4G+)';
+        default: return 'Desconocida';
+    }
+}
+
+// Función para agregar botón de información de rendimiento a la interfaz
+function addPerformanceInfoButton() {
+    // Verificar si ya existe el botón
+    if (document.getElementById('performance-info-btn')) return;
+    
+    const button = document.createElement('button');
+    button.id = 'performance-info-btn';
+    button.innerHTML = '📊';
+    button.title = 'Información de Rendimiento';
+    button.onclick = showPerformanceInfo;
+    
+    // Estilos del botón
+    button.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        border: none;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        font-size: 20px;
+        cursor: pointer;
+        z-index: 9999;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s ease;
+    `;
+    
+    // Efectos hover
+    button.addEventListener('mouseenter', () => {
+        button.style.transform = 'scale(1.1)';
+        button.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.4)';
+    });
+    
+    button.addEventListener('mouseleave', () => {
+        button.style.transform = 'scale(1)';
+        button.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.3)';
+    });
+    
+    document.body.appendChild(button);
+}
+
+// Función para remover el botón de información de rendimiento
+function removePerformanceInfoButton() {
+    const button = document.getElementById('performance-info-btn');
+    if (button) {
+        button.remove();
+    }
+}
+
+// --- FIN FUNCIONES DE INTERFAZ DE RENDIMIENTO ---
 
