@@ -682,25 +682,32 @@ body {
 
 /* Advertencia de teletransportación */
 .portal-warning {
-    animation: portalWarningPulse 0.5s ease-in-out infinite alternate !important;
-    box-shadow: 0 0 20px rgba(255, 100, 255, 0.8) !important;
-    border: 2px solid rgba(255, 150, 255, 0.9) !important;
-    position: relative !important;
-    z-index: 10 !important;
+  outline: 3px solid #DA70D6; /* Orquídea Medio - un morado vibrante */
+  outline-offset: -1px; /* Ajusta para que el outline no se coma el borde de la celda si lo tiene */
+  box-shadow: 0 0 12px 4px rgba(218, 112, 214, 0.7),
+              0 0 20px 8px rgba(255, 0, 255, 0.5),
+              inset 0 0 8px 2px rgba(255, 105, 180, 0.6); /* Rosa Caliente interior */
+  animation: portalWarningPulseCss 0.7s ease-in-out infinite alternate;
+  position: relative; /* Necesario si se usan pseudo-elementos en el futuro */
+  z-index: 10; /* Para asegurar que esté visualmente por encima de la celda normal */
+  border-radius: inherit; /* Heredar el border-radius de la celda si existe */
 }
 
-@keyframes portalWarningPulse {
-    0% {
-        transform: scale(1);
-        box-shadow: 0 0 20px rgba(255, 100, 255, 0.8);
-        border-color: rgba(255, 150, 255, 0.9);
-    }
-    100% {
-        transform: scale(1.05);
-        box-shadow: 0 0 30px rgba(255, 100, 255, 1), 
-                    inset 0 0 15px rgba(255, 150, 255, 0.3);
-        border-color: rgba(255, 200, 255, 1);
-    }
+@keyframes portalWarningPulseCss {
+  0% {
+    transform: scale(1.0);
+    outline-width: 2px;
+    box-shadow: 0 0 10px 3px rgba(218, 112, 214, 0.6),
+                0 0 15px 6px rgba(255, 0, 255, 0.4),
+                inset 0 0 6px 1px rgba(255, 105, 180, 0.5);
+  }
+  100% {
+    transform: scale(1.05); /* Un pulso sutil de tamaño */
+    outline-width: 4px;
+    box-shadow: 0 0 18px 6px rgba(218, 112, 214, 0.8),
+                0 0 28px 10px rgba(255, 0, 255, 0.65),
+                inset 0 0 12px 3px rgba(255, 105, 180, 0.75);
+  }
 }
 
 /* Efecto de aparición después de teletransportación */

@@ -356,8 +356,7 @@ function startCementRain(levelConfig) {
         }
         
         // Programar la siguiente caída
-        const currentLevelConfig = levelsConfiguration[currentSelectedLevelId];
-        if (currentLevelConfig && currentLevelConfig.cementRainInterval && currentGameMode === 'levels') {
+        if (levelConfig && typeof levelConfig.cementRainInterval === 'number' && currentGameMode === 'levels') {
             cementRainTimeoutId = setTimeout(dropCementPiece, levelConfig.cementRainInterval);
         }
     };
@@ -492,225 +491,210 @@ const levelsConfiguration = {
     6: { 
         id: 6, 
         name: "Nivel 6 - Portal Dimensional", 
-        objectiveText: "Alcanza 1000 puntos en 60 segundos. Las piezas se teletransportan cada 15 segundos.", 
+        objectiveText: "Alcanza 1000 puntos en 60 segundos. Las piezas se teletransportan al azar.", 
         targetScore: 1000,
         maxTimeSeconds: 60, // 60 segundos límite
-        teleportInterval: 15000, // Teletransportación cada 15 segundos
+        teleportInterval: 9000, // Teletransportación cada 9 segundos
         teleportWarningTime: 3000, // Advertencia de 3 segundos
         teleportIntensityIncrease: true, // La frecuencia aumenta con el tiempo
         locked: false, // Desbloqueado para probar
         starCriteria: 'time',
         starsThresholds: { threeStars: 35, twoStars: 45 } // Más difícil que el nivel 5
     },
-    // --- NIVELES 7-20 ---
+    // --- NUEVOS NIVELES (7 - 20) ---
     7: {
         id: 7,
-        name: "Nivel 7 - Cemento Acelerado",
-        objectiveText: "Alcanza 1500 puntos mientras llueve cemento cada 20 segundos.",
-        targetScore: 1500,
-        cementRainInterval: 20000, // 20 segundos
-        locked: false, // Desbloqueado para probar
-        starCriteria: 'time',
-        starsThresholds: { threeStars: 100, twoStars: 160 }
+        name: "Nivel 7 - Congelación Avanzada",
+        objectiveText: "Destruye 5 bloques de hielo resistentes (etapa 2).",
+        locked: false,
+        maxMoves: 40,
+        targetFrozenPiecesToClear: 5,
+        initialFrozenPieces: [
+            { row: 1, col: 1, initialStage: 2, id: "frozen_adv_1" },
+            { row: 1, col: 8, initialStage: 2, id: "frozen_adv_2" },
+            { row: 8, col: 1, initialStage: 2, id: "frozen_adv_3" },
+            { row: 8, col: 8, initialStage: 2, id: "frozen_adv_4" },
+            { row: 4, col: 4, initialStage: 2, id: "frozen_adv_5" },
+        ],
+        starCriteria: 'movesRemaining',
+        starsThresholds: { threeStars: 10, twoStars: 5 }
     },
     8: {
         id: 8,
-        name: "Nivel 8 - Fiebre de Anillos",
-        objectiveText: "Recolecta 15 anillos dorados.",
-        targetRingsToCollect: 15,
-        maxMoves: 35,
-        locked: true,
-        starCriteria: 'movesRemaining',
-        starsThresholds: { threeStars: 10, twoStars: 5 }
+        name: "Nivel 8 - Diluvio de Cemento",
+        objectiveText: "Alcanza 1500 puntos bajo una intensa lluvia de cemento (cada 20s).",
+        targetScore: 1500,
+        locked: false,
+        maxTimeSeconds: null,
+        cementRainInterval: 20000, // Más frecuente que el Nivel 3 original
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 150, twoStars: 210 } // Tiempo en segundos
     },
     9: {
         id: 9,
-        name: "Nivel 9 - Tormenta Incesante",
-        objectiveText: "Alcanza 1500 puntos en 60 segundos con rayos cada 8 segundos.",
-        targetScore: 1500,
-        maxTimeSeconds: 60,
-        lightningInterval: 8000,
-        lightningWarningTime: 2000,
-        electrifiedDuration: 5000,
-        locked: true,
-        starCriteria: 'time',
-        starsThresholds: { threeStars: 40, twoStars: 50 }
+        name: "Nivel 9 - Fiebre del Oro Intensa",
+        objectiveText: "Recolecta 12 anillos dorados con solo 22 movimientos.",
+        targetRingsToCollect: 12,
+        maxMoves: 22, // Más ajustado que el Nivel 4 original
+        locked: false,
+        starCriteria: 'movesRemaining',
+        starsThresholds: { threeStars: 7, twoStars: 3 }
     },
     10: {
         id: 10,
-        name: "Nivel 10 - Vórtice Dimensional",
-        objectiveText: "Alcanza 1500 puntos en 60 segundos. Las piezas se teletransportan cada 12 segundos.",
-        targetScore: 1500,
-        maxTimeSeconds: 60,
-        teleportInterval: 12000,
-        teleportWarningTime: 3000,
-        locked: true,
+        name: "Nivel 10 - Tormenta Implacable",
+        objectiveText: "Sobrevive y alcanza 1200 puntos en 70s bajo rayos frecuentes (cada 8s).",
+        targetScore: 1200,
+        maxTimeSeconds: 70,
+        lightningInterval: 8000, // Muy frecuentes
+        lightningWarningTime: 1500,
+        electrifiedDuration: 3000,
+        locked: false,
         starCriteria: 'time',
-        starsThresholds: { threeStars: 35, twoStars: 45 }
+        starsThresholds: { threeStars: 40, twoStars: 55 } // Tiempo en segundos
     },
     11: {
         id: 11,
-        name: "Nivel 11 - Glaciar de Cemento",
-        objectiveText: "Destruye 5 bloques de hielo mientras llueve cemento.",
-        targetFrozenPiecesToClear: 5,
-        maxMoves: 40,
-        cementRainInterval: 30000,
-        initialFrozenPieces: [
-            { row: 1, col: 1, initialStage: 2, id: "frozen_11_1" },
-            { row: 1, col: 8, initialStage: 2, id: "frozen_11_2" },
-            { row: 5, col: 5, initialStage: 3, id: "frozen_11_3" },
-            { row: 8, col: 1, initialStage: 2, id: "frozen_11_4" },
-            { row: 8, col: 8, initialStage: 2, id: "frozen_11_5" },
-        ],
-        locked: true,
-        starCriteria: 'movesRemaining',
-        starsThresholds: { threeStars: 12, twoStars: 6 }
+        name: "Nivel 11 - Vórtice Caótico",
+        objectiveText: "Consigue 1000 puntos en 50s mientras las piezas se teletransportan muy rápido (cada 7s).",
+        targetScore: 1000,
+        maxTimeSeconds: 50, // Menos tiempo
+        teleportInterval: 7000, // Muy frecuentes
+        teleportWarningTime: 2000,
+        teleportIntensityIncrease: true,
+        locked: false,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 25, twoStars: 40 } // Tiempo en segundos
     },
     12: {
         id: 12,
-        name: "Nivel 12 - Anillos Congelados",
-        objectiveText: "Recolecta 10 anillos y destruye 5 bloques de hielo.",
-        targetRingsToCollect: 10,
-        targetFrozenPiecesToClear: 5,
-        maxMoves: 40,
+        name: "Nivel 12 - Hielo y Cemento Peliagudo",
+        objectiveText: "Destruye 4 hielos (etapa 2) y alcanza 1000 puntos con lluvia de cemento (22s).",
+        locked: false,
+        maxMoves: 38,
+        targetScore: 1000,
+        targetFrozenPiecesToClear: 4,
         initialFrozenPieces: [
-            { row: 0, col: 4, initialStage: 2, id: "frozen_12_1" },
-            { row: 0, col: 5, initialStage: 2, id: "frozen_12_2" },
-            { row: 9, col: 4, initialStage: 2, id: "frozen_12_3" },
-            { row: 9, col: 5, initialStage: 2, id: "frozen_12_4" },
-            { row: 4, col: 0, initialStage: 3, id: "frozen_12_5" },
+            { row: 2, col: 2, initialStage: 2, id: "hc_1" },
+            { row: 2, col: 7, initialStage: 2, id: "hc_2" },
+            { row: 7, col: 2, initialStage: 2, id: "hc_3" },
+            { row: 7, col: 7, initialStage: 2, id: "hc_4" },
         ],
-        locked: true,
+        cementRainInterval: 22000,
         starCriteria: 'movesRemaining',
-        starsThresholds: { threeStars: 10, twoStars: 5 }
+        starsThresholds: { threeStars: 8, twoStars: 4 }
     },
     13: {
         id: 13,
-        name: "Nivel 13 - Lluvia Eléctrica",
-        objectiveText: "Alcanza 2000 puntos en 90s. ¡Cuidado con los rayos y el cemento!",
-        targetScore: 2000,
-        maxTimeSeconds: 90,
-        lightningInterval: 15000,
+        name: "Nivel 13 - Anillos Eléctricos Peligrosos",
+        objectiveText: "Recolecta 10 anillos en 80s durante una tormenta eléctrica (rayos cada 10s).",
+        targetRingsToCollect: 10,
+        maxTimeSeconds: 80, // Menos tiempo
+        locked: false,
+        lightningInterval: 10000,
         lightningWarningTime: 2000,
-        electrifiedDuration: 5000,
-        cementRainInterval: 25000,
-        locked: true,
+        electrifiedDuration: 2500,
         starCriteria: 'time',
-        starsThresholds: { threeStars: 60, twoStars: 75 }
+        starsThresholds: { threeStars: 45, twoStars: 65 } // Tiempo en segundos
     },
     14: {
         id: 14,
-        name: "Nivel 14 - Anillos Inestables",
-        objectiveText: "Recolecta 12 anillos mientras las piezas se teletransportan.",
-        targetRingsToCollect: 12,
-        maxMoves: 40,
-        teleportInterval: 20000,
-        teleportWarningTime: 3000,
-        locked: true,
-        starCriteria: 'movesRemaining',
-        starsThresholds: { threeStars: 12, twoStars: 6 }
+        name: "Nivel 14 - Cemento Dimensional Agobiante",
+        objectiveText: "Alcanza 1200 puntos con lluvia de cemento (25s) y portales (10s) en 90s.",
+        targetScore: 1200,
+        maxTimeSeconds: 90, // Menos tiempo
+        locked: false,
+        cementRainInterval: 25000,
+        teleportInterval: 10000,
+        teleportWarningTime: 2500,
+        teleportIntensityIncrease: true,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 50, twoStars: 70 } // Tiempo en segundos
     },
     15: {
         id: 15,
-        name: "Nivel 15 - Tormenta Glacial",
-        objectiveText: "Destruye 8 bloques de hielo bajo una tormenta eléctrica.",
-        targetFrozenPiecesToClear: 8,
-        maxTimeSeconds: 120,
-        lightningInterval: 10000,
-        lightningWarningTime: 2000,
-        electrifiedDuration: 5000,
+        name: "Nivel 15 - Infierno Helado Crítico",
+        objectiveText: "Destruye 6 hielos (etapa 2) con solo 28 movimientos.",
+        locked: false,
+        maxMoves: 28, // Muy pocos movimientos
+        targetFrozenPiecesToClear: 6,
         initialFrozenPieces: [
-            { row: 2, col: 2, initialStage: 3, id: "frozen_15_1" },
-            { row: 2, col: 7, initialStage: 3, id: "frozen_15_2" },
-            { row: 7, col: 2, initialStage: 3, id: "frozen_15_3" },
-            { row: 7, col: 7, initialStage: 3, id: "frozen_15_4" },
-            { row: 4, col: 4, initialStage: 2, id: "frozen_15_5" },
-            { row: 4, col: 5, initialStage: 2, id: "frozen_15_6" },
-            { row: 5, col: 4, initialStage: 2, id: "frozen_15_7" },
-            { row: 5, col: 5, initialStage: 2, id: "frozen_15_8" },
+            { row: 0, col: 4, initialStage: 2, id: "fh_1" },
+            { row: 2, col: 2, initialStage: 2, id: "fh_2" },
+            { row: 2, col: 7, initialStage: 2, id: "fh_3" },
+            { row: 5, col: 4, initialStage: 2, id: "fh_4" },
+            { row: 7, col: 2, initialStage: 2, id: "fh_5" },
+            { row: 7, col: 7, initialStage: 2, id: "fh_6" },
         ],
-        locked: true,
-        starCriteria: 'time',
-        starsThresholds: { threeStars: 80, twoStars: 100 }
+        starCriteria: 'movesRemaining',
+        starsThresholds: { threeStars: 5, twoStars: 2 }
     },
     16: {
         id: 16,
-        name: "Nivel 16 - Apocalipsis de Cemento",
-        objectiveText: "Sobrevive y alcanza 2000 puntos. El cemento cae cada 15 segundos.",
+        name: "Nivel 16 - Presión Temporal Extrema",
+        objectiveText: "Alcanza 2000 puntos en solo 45 segundos.",
         targetScore: 2000,
-        maxTimeSeconds: 120,
-        cementRainInterval: 15000,
-        locked: true,
+        maxTimeSeconds: 45, // Muy ajustado
+        locked: false,
         starCriteria: 'time',
-        starsThresholds: { threeStars: 90, twoStars: 110 }
+        starsThresholds: { threeStars: 20, twoStars: 30 } // Tiempo en segundos, muy difícil
     },
     17: {
         id: 17,
-        name: "Nivel 17 - Tesoro Helado",
-        objectiveText: "Recolecta 20 anillos en un tablero congelado.",
-        targetRingsToCollect: 20,
-        targetFrozenPiecesToClear: 10,
-        maxMoves: 50,
-        initialFrozenPieces: [
-             { row: 0, col: 0, initialStage: 2, id: "frozen_17_1" }, { row: 0, col: 9, initialStage: 2, id: "frozen_17_2" },
-             { row: 9, col: 0, initialStage: 2, id: "frozen_17_3" }, { row: 9, col: 9, initialStage: 2, id: "frozen_17_4" },
-             { row: 2, col: 4, initialStage: 3, id: "frozen_17_5" }, { row: 2, col: 5, initialStage: 3, id: "frozen_17_6" },
-             { row: 7, col: 4, initialStage: 3, id: "frozen_17_7" }, { row: 7, col: 5, initialStage: 3, id: "frozen_17_8" },
-             { row: 4, col: 2, initialStage: 1, id: "frozen_17_9" }, { row: 5, col: 7, initialStage: 1, id: "frozen_17_10" },
-        ],
-        locked: true,
-        starCriteria: 'movesRemaining',
-        starsThresholds: { threeStars: 15, twoStars: 8 }
+        name: "Nivel 17 - Danza Eléctrica y Dimensional Frenética",
+        objectiveText: "Haz 1500 puntos en 80s con rayos (9s) y portales (8s) muy frecuentes.",
+        targetScore: 1500,
+        maxTimeSeconds: 80,
+        locked: false,
+        lightningInterval: 9000,
+        teleportInterval: 8000,
+        teleportIntensityIncrease: true,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 40, twoStars: 60 } // Tiempo en segundos
     },
     18: {
         id: 18,
-        name: "Nivel 18 - Viaje Caótico",
-        objectiveText: "Alcanza 2500 puntos en una tormenta de portales y rayos.",
+        name: "Nivel 18 - La Fortaleza de Cemento Final",
+        objectiveText: "Alcanza 2500 puntos con lluvia de cemento (15s) y solo 25 movimientos.",
         targetScore: 2500,
-        maxTimeSeconds: 75,
-        lightningInterval: 12000,
-        teleportInterval: 15000,
-        lightningWarningTime: 2000,
-        teleportWarningTime: 3000,
-        electrifiedDuration: 5000,
-        locked: true,
-        starCriteria: 'time',
-        starsThresholds: { threeStars: 50, twoStars: 65 }
+        maxMoves: 25, // Muy restrictivo con el cemento
+        locked: false,
+        cementRainInterval: 15000, // Muy frecuente
+        starCriteria: 'movesRemaining',
+        starsThresholds: { threeStars: 6, twoStars: 2 }
     },
     19: {
         id: 19,
-        name: "Nivel 19 - Rocas movedizas",
-        objectiveText: "Alcanza 2000 puntos. Las piezas se teletransportan y el cemento cae.",
-        targetScore: 2000,
-        maxTimeSeconds: 120,
-        cementRainInterval: 20000,
-        teleportInterval: 18000,
-        teleportWarningTime: 3000,
+        name: "Nivel 19 - Triple Amenaza Combinada",
+        objectiveText: "Recolecta 5 anillos y destruye 3 hielos, con rayos (10s) y tiempo de 100s.",
+        targetRingsToCollect: 5,
+        targetFrozenPiecesToClear: 3,
+        initialFrozenPieces: [
+            { row: 4, col: 1, initialStage: 2, id: "ta_1"},
+            { row: 4, col: 4, initialStage: 2, id: "ta_2"},
+            { row: 4, col: 8, initialStage: 2, id: "ta_3"},
+        ],
+        maxTimeSeconds: 100,
+        lightningInterval: 10000,
+        electrifiedDuration: 2000, // Hacer la electrificación un poco menos penalizante aquí
         locked: false,
         starCriteria: 'time',
-        starsThresholds: { threeStars: 80, twoStars: 100 }
+        starsThresholds: { threeStars: 50, twoStars: 75 } // Tiempo en segundos
     },
     20: {
         id: 20,
-        name: "Nivel 20 - La Prueba Final",
-        objectiveText: "Destruye 10 bloques de hielo en una tormenta de portales y rayos.",
-        targetFrozenPiecesToClear: 10,
-        maxTimeSeconds: 150,
-        lightningInterval: 10000,
-        teleportInterval: 13000,
-        lightningWarningTime: 2000,
-        teleportWarningTime: 2500,
-        electrifiedDuration: 6000,
-        initialFrozenPieces: [
-            { row: 1, col: 1, initialStage: 3, id: "frozen_20_1" }, { row: 1, col: 8, initialStage: 3, id: "frozen_20_2" },
-            { row: 8, col: 1, initialStage: 3, id: "frozen_20_3" }, { row: 8, col: 8, initialStage: 3, id: "frozen_20_4" },
-            { row: 3, col: 3, initialStage: 2, id: "frozen_20_5" }, { row: 3, col: 6, initialStage: 2, id: "frozen_20_6" },
-            { row: 6, col: 3, initialStage: 2, id: "frozen_20_7" }, { row: 6, col: 6, initialStage: 2, id: "frozen_20_8" },
-            { row: 4, col: 4, initialStage: 3, id: "frozen_20_9" }, { row: 5, col: 5, initialStage: 3, id: "frozen_20_10" },
-        ],
+        name: "Nivel 20 - Apocalipsis de Bloques",
+        objectiveText: "¡SOBREVIVE! Alcanza 2000 puntos en 90s con cemento (18s), rayos (8s) y portales (9s).",
+        targetScore: 2000, // Un poco menos de score para enfocar en supervivencia
+        maxTimeSeconds: 90,
         locked: false,
+        cementRainInterval: 18000,
+        lightningInterval: 8000,
+        electrifiedDuration: 3000,
+        teleportInterval: 9000,
+        teleportIntensityIncrease: true,
         starCriteria: 'time',
-        starsThresholds: { threeStars: 90, twoStars: 120 }
+        starsThresholds: { threeStars: 45, twoStars: 65 } // Tiempo en segundos
     }
     // ... más niveles
 };
@@ -794,9 +778,12 @@ function displayPieces_levels() {
   for (let i = 0; i < 3; i++) {
     const newPieceElement = generateSinglePieceElement_levels();
     
-    // Añadir anillo si el nivel lo requiere
-    const levelConfig = levelsConfiguration[currentSelectedLevelId];
-    if (levelConfig && levelConfig.targetRingsToCollect) {
+    // Añadir anillo si el nivel actual está configurado para tener anillos
+    const currentLevelConfig = levelsConfiguration[currentSelectedLevelId];
+    if (currentLevelConfig && currentLevelConfig.targetRingsToCollect) {
+        // Podríamos añadir una probabilidad para que no todas las piezas tengan anillo,
+        // o controlar cuántos anillos activos puede haber a la vez.
+        // Por ahora, si el nivel tiene objetivo de anillos, cada nueva pieza tendrá uno.
         addRingToPiece(newPieceElement);
     }
     
@@ -1114,9 +1101,9 @@ async function dragEnd_levels(event) {
             // Colocar la pieza en el tablero
             placePiece_levels(selectedPiece_levels.matrix, bestPlacePos.row, bestPlacePos.col, selectedPiece_levels.color);
             
+            const currentLevelConfigForRings = levelsConfiguration[currentSelectedLevelId];
             // Colocar anillo en el tablero si la pieza tenía uno y el nivel lo requiere
-            const levelConfig = levelsConfiguration[currentSelectedLevelId];
-            if (levelConfig && levelConfig.targetRingsToCollect && activePieceElement_levels && activePieceElement_levels.ringData) {
+            if (currentLevelConfigForRings && currentLevelConfigForRings.targetRingsToCollect && activePieceElement_levels && activePieceElement_levels.ringData) {
                 placeRingsOnBoard(selectedPiece_levels.matrix, bestPlacePos.row, bestPlacePos.col, activePieceElement_levels.ringData);
             }
             
@@ -1127,8 +1114,9 @@ async function dragEnd_levels(event) {
             // Corrected piece replenishment: generate and append only one new piece
             const newSinglePiece_levels = generateSinglePieceElement_levels();
             
-            // Añadir anillo a la nueva pieza si el nivel lo requiere
-            if (levelConfig && levelConfig.targetRingsToCollect) {
+            const currentLevelConfigForNewPieceRing = levelsConfiguration[currentSelectedLevelId];
+            // Añadir anillo a la nueva pieza si el nivel actual está configurado para tener anillos
+            if (currentLevelConfigForNewPieceRing && currentLevelConfigForNewPieceRing.targetRingsToCollect) {
                 addRingToPiece(newSinglePiece_levels);
             }
             
