@@ -356,7 +356,8 @@ function startCementRain(levelConfig) {
         }
         
         // Programar la siguiente caída
-        if (currentSelectedLevelId === 3 && currentGameMode === 'levels') {
+        const currentLevelConfig = levelsConfiguration[currentSelectedLevelId];
+        if (currentLevelConfig && currentLevelConfig.cementRainInterval && currentGameMode === 'levels') {
             cementRainTimeoutId = setTimeout(dropCementPiece, levelConfig.cementRainInterval);
         }
     };
@@ -501,6 +502,216 @@ const levelsConfiguration = {
         starCriteria: 'time',
         starsThresholds: { threeStars: 35, twoStars: 45 } // Más difícil que el nivel 5
     },
+    // --- NIVELES 7-20 ---
+    7: {
+        id: 7,
+        name: "Nivel 7 - Cemento Acelerado",
+        objectiveText: "Alcanza 1500 puntos mientras llueve cemento cada 20 segundos.",
+        targetScore: 1500,
+        cementRainInterval: 20000, // 20 segundos
+        locked: false, // Desbloqueado para probar
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 100, twoStars: 160 }
+    },
+    8: {
+        id: 8,
+        name: "Nivel 8 - Fiebre de Anillos",
+        objectiveText: "Recolecta 15 anillos dorados.",
+        targetRingsToCollect: 15,
+        maxMoves: 35,
+        locked: true,
+        starCriteria: 'movesRemaining',
+        starsThresholds: { threeStars: 10, twoStars: 5 }
+    },
+    9: {
+        id: 9,
+        name: "Nivel 9 - Tormenta Incesante",
+        objectiveText: "Alcanza 1500 puntos en 60 segundos con rayos cada 8 segundos.",
+        targetScore: 1500,
+        maxTimeSeconds: 60,
+        lightningInterval: 8000,
+        lightningWarningTime: 2000,
+        electrifiedDuration: 5000,
+        locked: true,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 40, twoStars: 50 }
+    },
+    10: {
+        id: 10,
+        name: "Nivel 10 - Vórtice Dimensional",
+        objectiveText: "Alcanza 1500 puntos en 60 segundos. Las piezas se teletransportan cada 12 segundos.",
+        targetScore: 1500,
+        maxTimeSeconds: 60,
+        teleportInterval: 12000,
+        teleportWarningTime: 3000,
+        locked: true,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 35, twoStars: 45 }
+    },
+    11: {
+        id: 11,
+        name: "Nivel 11 - Glaciar de Cemento",
+        objectiveText: "Destruye 5 bloques de hielo mientras llueve cemento.",
+        targetFrozenPiecesToClear: 5,
+        maxMoves: 40,
+        cementRainInterval: 30000,
+        initialFrozenPieces: [
+            { row: 1, col: 1, initialStage: 2, id: "frozen_11_1" },
+            { row: 1, col: 8, initialStage: 2, id: "frozen_11_2" },
+            { row: 5, col: 5, initialStage: 3, id: "frozen_11_3" },
+            { row: 8, col: 1, initialStage: 2, id: "frozen_11_4" },
+            { row: 8, col: 8, initialStage: 2, id: "frozen_11_5" },
+        ],
+        locked: true,
+        starCriteria: 'movesRemaining',
+        starsThresholds: { threeStars: 12, twoStars: 6 }
+    },
+    12: {
+        id: 12,
+        name: "Nivel 12 - Anillos Congelados",
+        objectiveText: "Recolecta 10 anillos y destruye 5 bloques de hielo.",
+        targetRingsToCollect: 10,
+        targetFrozenPiecesToClear: 5,
+        maxMoves: 40,
+        initialFrozenPieces: [
+            { row: 0, col: 4, initialStage: 2, id: "frozen_12_1" },
+            { row: 0, col: 5, initialStage: 2, id: "frozen_12_2" },
+            { row: 9, col: 4, initialStage: 2, id: "frozen_12_3" },
+            { row: 9, col: 5, initialStage: 2, id: "frozen_12_4" },
+            { row: 4, col: 0, initialStage: 3, id: "frozen_12_5" },
+        ],
+        locked: true,
+        starCriteria: 'movesRemaining',
+        starsThresholds: { threeStars: 10, twoStars: 5 }
+    },
+    13: {
+        id: 13,
+        name: "Nivel 13 - Lluvia Eléctrica",
+        objectiveText: "Alcanza 2000 puntos en 90s. ¡Cuidado con los rayos y el cemento!",
+        targetScore: 2000,
+        maxTimeSeconds: 90,
+        lightningInterval: 15000,
+        lightningWarningTime: 2000,
+        electrifiedDuration: 5000,
+        cementRainInterval: 25000,
+        locked: true,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 60, twoStars: 75 }
+    },
+    14: {
+        id: 14,
+        name: "Nivel 14 - Anillos Inestables",
+        objectiveText: "Recolecta 12 anillos mientras las piezas se teletransportan.",
+        targetRingsToCollect: 12,
+        maxMoves: 40,
+        teleportInterval: 20000,
+        teleportWarningTime: 3000,
+        locked: true,
+        starCriteria: 'movesRemaining',
+        starsThresholds: { threeStars: 12, twoStars: 6 }
+    },
+    15: {
+        id: 15,
+        name: "Nivel 15 - Tormenta Glacial",
+        objectiveText: "Destruye 8 bloques de hielo bajo una tormenta eléctrica.",
+        targetFrozenPiecesToClear: 8,
+        maxTimeSeconds: 120,
+        lightningInterval: 10000,
+        lightningWarningTime: 2000,
+        electrifiedDuration: 5000,
+        initialFrozenPieces: [
+            { row: 2, col: 2, initialStage: 3, id: "frozen_15_1" },
+            { row: 2, col: 7, initialStage: 3, id: "frozen_15_2" },
+            { row: 7, col: 2, initialStage: 3, id: "frozen_15_3" },
+            { row: 7, col: 7, initialStage: 3, id: "frozen_15_4" },
+            { row: 4, col: 4, initialStage: 2, id: "frozen_15_5" },
+            { row: 4, col: 5, initialStage: 2, id: "frozen_15_6" },
+            { row: 5, col: 4, initialStage: 2, id: "frozen_15_7" },
+            { row: 5, col: 5, initialStage: 2, id: "frozen_15_8" },
+        ],
+        locked: true,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 80, twoStars: 100 }
+    },
+    16: {
+        id: 16,
+        name: "Nivel 16 - Apocalipsis de Cemento",
+        objectiveText: "Sobrevive y alcanza 2000 puntos. El cemento cae cada 15 segundos.",
+        targetScore: 2000,
+        maxTimeSeconds: 120,
+        cementRainInterval: 15000,
+        locked: true,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 90, twoStars: 110 }
+    },
+    17: {
+        id: 17,
+        name: "Nivel 17 - Tesoro Helado",
+        objectiveText: "Recolecta 20 anillos en un tablero congelado.",
+        targetRingsToCollect: 20,
+        targetFrozenPiecesToClear: 10,
+        maxMoves: 50,
+        initialFrozenPieces: [
+             { row: 0, col: 0, initialStage: 2, id: "frozen_17_1" }, { row: 0, col: 9, initialStage: 2, id: "frozen_17_2" },
+             { row: 9, col: 0, initialStage: 2, id: "frozen_17_3" }, { row: 9, col: 9, initialStage: 2, id: "frozen_17_4" },
+             { row: 2, col: 4, initialStage: 3, id: "frozen_17_5" }, { row: 2, col: 5, initialStage: 3, id: "frozen_17_6" },
+             { row: 7, col: 4, initialStage: 3, id: "frozen_17_7" }, { row: 7, col: 5, initialStage: 3, id: "frozen_17_8" },
+             { row: 4, col: 2, initialStage: 1, id: "frozen_17_9" }, { row: 5, col: 7, initialStage: 1, id: "frozen_17_10" },
+        ],
+        locked: true,
+        starCriteria: 'movesRemaining',
+        starsThresholds: { threeStars: 15, twoStars: 8 }
+    },
+    18: {
+        id: 18,
+        name: "Nivel 18 - Viaje Caótico",
+        objectiveText: "Alcanza 2500 puntos en una tormenta de portales y rayos.",
+        targetScore: 2500,
+        maxTimeSeconds: 75,
+        lightningInterval: 12000,
+        teleportInterval: 15000,
+        lightningWarningTime: 2000,
+        teleportWarningTime: 3000,
+        electrifiedDuration: 5000,
+        locked: true,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 50, twoStars: 65 }
+    },
+    19: {
+        id: 19,
+        name: "Nivel 19 - Rocas movedizas",
+        objectiveText: "Alcanza 2000 puntos. Las piezas se teletransportan y el cemento cae.",
+        targetScore: 2000,
+        maxTimeSeconds: 120,
+        cementRainInterval: 20000,
+        teleportInterval: 18000,
+        teleportWarningTime: 3000,
+        locked: false,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 80, twoStars: 100 }
+    },
+    20: {
+        id: 20,
+        name: "Nivel 20 - La Prueba Final",
+        objectiveText: "Destruye 10 bloques de hielo en una tormenta de portales y rayos.",
+        targetFrozenPiecesToClear: 10,
+        maxTimeSeconds: 150,
+        lightningInterval: 10000,
+        teleportInterval: 13000,
+        lightningWarningTime: 2000,
+        teleportWarningTime: 2500,
+        electrifiedDuration: 6000,
+        initialFrozenPieces: [
+            { row: 1, col: 1, initialStage: 3, id: "frozen_20_1" }, { row: 1, col: 8, initialStage: 3, id: "frozen_20_2" },
+            { row: 8, col: 1, initialStage: 3, id: "frozen_20_3" }, { row: 8, col: 8, initialStage: 3, id: "frozen_20_4" },
+            { row: 3, col: 3, initialStage: 2, id: "frozen_20_5" }, { row: 3, col: 6, initialStage: 2, id: "frozen_20_6" },
+            { row: 6, col: 3, initialStage: 2, id: "frozen_20_7" }, { row: 6, col: 6, initialStage: 2, id: "frozen_20_8" },
+            { row: 4, col: 4, initialStage: 3, id: "frozen_20_9" }, { row: 5, col: 5, initialStage: 3, id: "frozen_20_10" },
+        ],
+        locked: false,
+        starCriteria: 'time',
+        starsThresholds: { threeStars: 90, twoStars: 120 }
+    }
     // ... más niveles
 };
 
@@ -583,8 +794,9 @@ function displayPieces_levels() {
   for (let i = 0; i < 3; i++) {
     const newPieceElement = generateSinglePieceElement_levels();
     
-    // Añadir anillo si es el Nivel 4
-    if (currentSelectedLevelId === 4) {
+    // Añadir anillo si el nivel lo requiere
+    const levelConfig = levelsConfiguration[currentSelectedLevelId];
+    if (levelConfig && levelConfig.targetRingsToCollect) {
         addRingToPiece(newPieceElement);
     }
     
@@ -902,8 +1114,9 @@ async function dragEnd_levels(event) {
             // Colocar la pieza en el tablero
             placePiece_levels(selectedPiece_levels.matrix, bestPlacePos.row, bestPlacePos.col, selectedPiece_levels.color);
             
-            // Colocar anillo en el tablero si la pieza tenía uno (Nivel 4)
-            if (currentSelectedLevelId === 4 && activePieceElement_levels && activePieceElement_levels.ringData) {
+            // Colocar anillo en el tablero si la pieza tenía uno y el nivel lo requiere
+            const levelConfig = levelsConfiguration[currentSelectedLevelId];
+            if (levelConfig && levelConfig.targetRingsToCollect && activePieceElement_levels && activePieceElement_levels.ringData) {
                 placeRingsOnBoard(selectedPiece_levels.matrix, bestPlacePos.row, bestPlacePos.col, activePieceElement_levels.ringData);
             }
             
@@ -914,8 +1127,8 @@ async function dragEnd_levels(event) {
             // Corrected piece replenishment: generate and append only one new piece
             const newSinglePiece_levels = generateSinglePieceElement_levels();
             
-            // Añadir anillo a la nueva pieza si es el Nivel 4
-            if (currentSelectedLevelId === 4) {
+            // Añadir anillo a la nueva pieza si el nivel lo requiere
+            if (levelConfig && levelConfig.targetRingsToCollect) {
                 addRingToPiece(newSinglePiece_levels);
             }
             
@@ -1785,6 +1998,12 @@ function setupMobileScrollDetection() {
 function initializeLevel(levelId) {
     console.log(`Inicializando Nivel ${levelId}...`);
     
+    // Limpiar sistemas de niveles anteriores para un inicio limpio
+    cleanupCementSystem();
+    cleanupRingEffects();
+    cleanupLightningSystem();
+    cleanupPortalSystem();
+
     const levelConfig = levelsConfiguration[levelId];
     if (!levelConfig) {
         console.error(`No se encontró configuración para el nivel ${levelId}`);
@@ -1792,6 +2011,28 @@ function initializeLevel(levelId) {
         return;
     }
     currentSelectedLevelId = levelId; // Establecer el ID del nivel actual
+
+    // Inicializar el contexto del juego para el nivel actual
+    window.gameContext = {
+        levels: {
+            current: {
+                id: levelId,
+                config: levelConfig,
+                state: {
+                    score: 0,
+                    linesCleared: 0,
+                    frozenPiecesCleared: 0,
+                    ringsCollected: 0,
+                    startTime: null,
+                    isPaused: false
+                }
+            }
+        },
+        // Los sistemas de mecánicas (rayos, portales, etc.) añadirán sus propios contextos aquí.
+    };
+
+    // Limpieza de estados de juegos anteriores
+    cleanupPreviousGame();
 
     // Mostrar el modal de objetivo primero
     showInitialObjectiveModal(levelConfig, () => {
@@ -1886,18 +2127,18 @@ function initializeLevel(levelId) {
 
         displayLevelObjective(levelConfig); // Llamar a la versión SIMPLIFICADA
 
-        // Iniciar lluvia de cemento si es el Nivel 3
-        if (levelConfig.id === 3 && levelConfig.cementRainInterval) {
+        // Iniciar lluvia de cemento si el nivel lo tiene configurado
+        if (levelConfig.cementRainInterval) {
             startCementRain(levelConfig);
         }
 
-        // Inicializar sistema de anillos si es el Nivel 4
-        if (levelConfig.id === 4 && levelConfig.targetRingsToCollect) {
+        // Inicializar sistema de anillos si el nivel lo tiene configurado
+        if (levelConfig.targetRingsToCollect) {
             initializeRingSystem(levelConfig);
         }
 
-        // Inicializar sistema de rayos si es el Nivel 5
-        if (levelConfig.id === 5 && levelConfig.lightningInterval) {
+        // Inicializar sistema de rayos si el nivel lo tiene configurado
+        if (levelConfig.lightningInterval) {
             startLightningStorm(levelConfig);
             
             // Ejecutar test del canvas después de un breve delay
@@ -1906,8 +2147,8 @@ function initializeLevel(levelId) {
             }, 1000);
         }
 
-        // Inicializar sistema de portales si es el Nivel 6
-        if (levelConfig.id === 6 && levelConfig.teleportInterval) {
+        // Inicializar sistema de portales si el nivel lo tiene configurado
+        if (levelConfig.teleportInterval) {
             startDimensionalPortals(levelConfig);
         }
 
@@ -1936,24 +2177,37 @@ function displayLevelObjective(levelConfig) { // VERSIÓN SIMPLIFICADA
 
     let content = ""; // Reiniciar contenido
     
-    // Nivel 5 - Tormenta Eléctrica con temporizador
-    if (levelConfig.id === 5 && levelConfig.maxTimeSeconds) {
+    // Lógica unificada para niveles con tiempo
+    if (levelConfig.maxTimeSeconds && levelStartTime > 0) {
         const remainingTime = Math.max(0, levelConfig.maxTimeSeconds - Math.floor((Date.now() - levelStartTime) / 1000));
         const minutes = Math.floor(remainingTime / 60);
         const seconds = remainingTime % 60;
         const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
         
-        content = `<p><span class="info-label">Meta:</span> ${levelConfig.targetScore} Pts | <span class="info-label">Tiempo:</span> <span id="time-remaining-display" class="${remainingTime <= 15 ? 'critical' : remainingTime <= 30 ? 'warning' : ''}">${timeString}</span></p>`;
-        
+        let objectiveParts = [];
+        if (levelConfig.targetScore) {
+            objectiveParts.push(`<span class="info-label">Meta:</span> ${levelConfig.targetScore} Pts`);
+        }
+        if (levelConfig.targetFrozenPiecesToClear) {
+            const clearedCount = frozenPiecesData.filter(p => p.currentStage <= 0).length;
+            objectiveParts.push(`<span class="info-label">Hielo:</span> <span id="frozen-pieces-cleared-display">${clearedCount}</span>/${levelConfig.targetFrozenPiecesToClear}`);
+        }
+        // ... (se pueden añadir más aquí si es necesario)
+
+        objectiveParts.push(`<span class="info-label">Tiempo:</span> <span id="time-remaining-display" class="${remainingTime <= 15 ? 'critical' : remainingTime <= 30 ? 'warning' : ''}">${timeString}</span>`);
+        content = `<p>${objectiveParts.join(' | ')}</p>`;
+
         // Actualizar cada segundo
         setTimeout(() => {
-            if ((currentSelectedLevelId === 5 || currentSelectedLevelId === 6) && levelStartTime > 0) {
+            const currentLevelConfig = levelsConfiguration[currentSelectedLevelId];
+            if (currentLevelConfig && currentLevelConfig.maxTimeSeconds && levelStartTime > 0) {
                 displayLevelObjective(levelConfig);
             }
         }, 1000);
+
     } else if (levelConfig.targetScore && !levelConfig.targetFrozenPiecesToClear && !levelConfig.targetRingsToCollect && typeof levelConfig.maxMoves === 'undefined') { // Solo Nivel 1 (o similar)
         content = `<p><span class="info-label">Meta:</span> ${levelConfig.targetScore} Pts</p>`;
-    } else { // Para niveles con movimientos y/o objetivos específicos
+    } else { // Para niveles con movimientos y/o objetivos específicos (sin tiempo)
         let parts = [];
         if (typeof levelConfig.maxMoves !== 'undefined') {
             parts.push(`<span class="info-label">Mov:</span> <span id="moves-remaining-display">${movesRemaining}</span>`);
@@ -2404,7 +2658,8 @@ function triggerLightningWarning(levelConfig) {
         strikeLightning(currentLightningTarget.row, currentLightningTarget.col, levelConfig);
         
         // Programar el próximo rayo SOLO si el nivel sigue activo
-        if (currentSelectedLevelId === 5 && currentGameMode === 'levels') {
+        const currentLevelConfig = levelsConfiguration[currentSelectedLevelId];
+        if (currentLevelConfig && currentLevelConfig.lightningInterval && currentGameMode === 'levels') {
             // Reducir ligeramente el intervalo con la intensidad (más rayos cuando es más intenso)
             const adjustedInterval = levelConfig.lightningInterval * (1 - (stormIntensity - 1) * 0.1);
             console.log(`⚡ Próximo rayo en ${adjustedInterval / 1000} segundos (intervalo ajustado por intensidad)`);
@@ -2803,7 +3058,7 @@ function animateLightningEffects() {
     }
     
     // Continuar animación si hay efectos activos O si estamos en el Nivel 5
-    if (hasActiveEffects || isLightningWarningActive || currentSelectedLevelId === 5) {
+    if (hasActiveEffects || isLightningWarningActive || levelsConfiguration[currentSelectedLevelId]?.lightningInterval) {
         lightningAnimationId = requestAnimationFrame(animateLightningEffects);
     } else {
         // Asegurar limpieza final del canvas
@@ -3720,7 +3975,23 @@ function setupPortalCanvas() {
 function startDimensionalPortals(levelConfig) {
     if (!levelConfig.teleportInterval) return;
     
-    console.log("🌀 Iniciando portales dimensionales cada", levelConfig.teleportInterval / 1000, "segundos");
+    console.log(`🌀 Iniciando portales dimensionales cada ${levelConfig.teleportInterval / 1000} segundos`);
+    
+    // Asegurarse de que el contexto del juego exista
+    if (!window.gameContext) {
+        console.error("Error crítico: gameContext no está inicializado antes de iniciar los portales.");
+        window.gameContext = {}; // Inicializar como fallback para evitar más errores
+    }
+
+    // Inicializar el sistema de portales
+    window.gameContext.teleportation = {
+        isTeleportationPaused: false,
+        piecesQueuedForTeleport: [],
+        activeTimeouts: [],
+        activeEffects: [],
+        warningEffects: []
+    };
+
     setupPortalCanvas();
     
     // Inicializar intensidad de portales
@@ -3750,56 +4021,64 @@ function startDimensionalPortals(levelConfig) {
 }
 
 function triggerTeleportWarning(levelConfig) {
-    if (!boardElement) return;
-    
-    // Calcular intensidad basada en tiempo transcurrido
-    const elapsedTime = Date.now() - portalStartTime;
-    const timeProgress = Math.min(1, elapsedTime / (levelConfig.maxTimeSeconds * 1000));
-    teleportIntensity = 1 + timeProgress * 1.5; // Intensidad de 1 a 2.5
-    
-    console.log(`🌀 Intensidad de portales: ${teleportIntensity.toFixed(2)} (progreso: ${(timeProgress * 100).toFixed(1)}%)`);
-    
-    // Encontrar piezas para teletransportar
-    const piecesToMove = findPiecesToTeleport();
-    
-    if (piecesToMove.length === 0) {
-        console.log("🌀 No hay piezas para teletransportar - programando próximo intento");
-        // Programar el próximo intento más pronto (5 segundos) para verificar si hay nuevas piezas
-        const retryDelay = 5000;
-        console.log(`🌀 Reintentando teletransportación en ${retryDelay / 1000} segundos`);
-        
-        teleportTimeoutId = setTimeout(() => {
-            triggerTeleportWarning(levelConfig);
-        }, retryDelay);
+    if (window.gameContext.teleportation.isTeleportationPaused) {
+        console.log("Teleportation is paused, skipping warning.");
         return;
     }
-    
-    piecesToTeleport = piecesToMove;
-    isTeleportWarningActive = true;
-    
-    console.log(`⚠️ Advertencia de teletransportación para ${piecesToMove.length} piezas`);
-    
-    // Mostrar advertencia visual
-    showTeleportWarning(piecesToMove);
-    
-    // Programar la teletransportación
-    teleportWarningTimeoutId = setTimeout(() => {
-        executeTeleportation(piecesToMove, levelConfig);
+    const piecesToMove = findPiecesToTeleport();
+    if (piecesToMove.length === 0) {
+        // No pieces to teleport, reschedule
+        console.log("🌀 No hay piezas en el tablero para teletransportar. Reprogramando...");
         scheduleNextTeleportCycle(levelConfig);
-    }, levelConfig.teleportWarningTime);
+        return;
+    }
+
+    // Guardar las piezas que se teletransportarán
+    window.gameContext.teleportation.piecesQueuedForTeleport = piecesToMove;
+
+    // Mostrar advertencia visual (CSS)
+    showTeleportWarning(piecesToMove);
+
+    /* // Iniciar efectos de advertencia en el canvas
+    window.gameContext.teleportation.warningEffects = piecesToMove.map(p => {
+        const cellRect = getCellElement(p.row, p.col).getBoundingClientRect();
+        const canvasRect = portalCanvas.getBoundingClientRect();
+        const x = cellRect.left + cellRect.width / 2 - canvasRect.left;
+        const y = cellRect.top + cellRect.height / 2 - canvasRect.top;
+        return new PortalWarningEffect(x, y);
+    }); */
+
+
+    // Programar la teletransportación real después de la advertencia
+    const teleportTimeout = setTimeout(() => {
+        // Limpiar efectos de advertencia de canvas antes de teletransportar
+        window.gameContext.teleportation.warningEffects = [];
+        
+        executeTeleportation(piecesToMove, levelConfig);
+    }, levelConfig.teleportWarningTime || 3000);
+
+    window.gameContext.teleportation.activeTimeouts.push(teleportTimeout);
 }
 
 function scheduleNextTeleportCycle(levelConfig) {
-    // Programar el próximo ciclo SOLO si el nivel sigue activo
-    if (currentSelectedLevelId === 6 && currentGameMode === 'levels') {
-        // Reducir ligeramente el intervalo con la intensidad
-        const adjustedInterval = levelConfig.teleportInterval * (1 - (teleportIntensity - 1) * 0.15);
-        console.log(`🌀 Próxima teletransportación en ${adjustedInterval / 1000} segundos (intervalo ajustado por intensidad)`);
-        
-        teleportTimeoutId = setTimeout(() => {
-            triggerTeleportWarning(levelConfig);
-        }, adjustedInterval);
+    // Limpiar timeouts de ciclos anteriores para evitar duplicados
+    const existingTimeout = window.gameContext.teleportation.activeTimeouts.find(t => t.type === 'teleportCycle');
+    if (existingTimeout) {
+        clearTimeout(existingTimeout.id);
+        window.gameContext.teleportation.activeTimeouts = window.gameContext.teleportation.activeTimeouts.filter(t => t.type !== 'teleportCycle');
     }
+
+    const interval = levelConfig.teleportInterval || 15000;
+    console.log(`🌀 Próxima teletransportación programada en ${interval / 1000} segundos.`);
+
+    const timeoutId = setTimeout(() => {
+        // Eliminar este timeout de la lista antes de ejecutar
+        window.gameContext.teleportation.activeTimeouts = window.gameContext.teleportation.activeTimeouts.filter(t => t.id !== timeoutId);
+        triggerTeleportWarning(levelConfig);
+    }, interval);
+
+    // Guardar el nuevo timeout
+    window.gameContext.teleportation.activeTimeouts.push({ id: timeoutId, type: 'teleportCycle' });
 }
 
 function findPiecesToTeleport() {
@@ -3861,7 +4140,7 @@ function showTeleportWarning(piecesToMove) {
     createDimensionalDistortion();
 }
 
-function executeTeleportation(piecesToMove, levelConfig) {
+async function executeTeleportation(piecesToMove, levelConfig) {
     console.log(`🌀 EJECUTANDO TELETRANSPORTACIÓN de ${piecesToMove.length} piezas`);
     
     isTeleportWarningActive = false;
@@ -3884,6 +4163,11 @@ function executeTeleportation(piecesToMove, levelConfig) {
     
     // Limpiar lista de piezas a teletransportar
     piecesToTeleport = [];
+
+    // Al final, después de que todas las animaciones hayan terminado
+    // o después de que se haya ejecutado la lógica principal:
+    console.log("🌀 Ciclo de teletransportación completado. Programando el siguiente.");
+    scheduleNextTeleportCycle(levelConfig);
 }
 
 function teleportSinglePiece(piece) {
@@ -4124,7 +4408,7 @@ function animatePortalEffects() {
     }
     
     // Continuar animación si hay efectos activos O si estamos en el Nivel 6
-    if (hasActiveEffects || isTeleportWarningActive || currentSelectedLevelId === 6) {
+    if (hasActiveEffects || isTeleportWarningActive || levelsConfiguration[currentSelectedLevelId]?.teleportInterval) {
         teleportAnimationId = requestAnimationFrame(animatePortalEffects);
     } else {
         // Asegurar limpieza final del canvas
@@ -4697,31 +4981,44 @@ class DimensionalWave {
 
 // Función para verificar si se pueden reanudar las teletransportaciones
 function checkAndResumeTeleportations() {
-    // Solo verificar si estamos en el Nivel 6 y el sistema está activo
-    if (currentSelectedLevelId !== 6 || !portalCanvas) return;
-    
-    // Contar piezas en el tablero
-    let piecesCount = 0;
-    for (let r = 0; r < 10; r++) {
-        for (let c = 0; c < 10; c++) {
-            if (board[r][c] === 1) {
-                piecesCount++;
-            }
+    if (window.gameContext && window.gameContext.teleportation) {
+        const { isTeleportationPaused, piecesQueuedForTeleport } = window.gameContext.teleportation;
+        if (isTeleportationPaused && piecesQueuedForTeleport.length > 0) {
+            console.log("🌀 Reanudando ciclo de teletransportación pendiente.");
+            window.gameContext.teleportation.isTeleportationPaused = false;
+            
+            // Disparar la advertencia inmediatamente para las piezas en cola
+            const levelConfig = window.gameContext.levels.current.config;
+            triggerTeleportWarning(levelConfig);
+        } else if (isTeleportationPaused) {
+             // Si estaba pausado pero no había nada en cola, simplemente reanudar el ciclo normal.
+            console.log("🌀 Reanudando programación de portales.");
+            window.gameContext.teleportation.isTeleportationPaused = false;
+            const levelConfig = window.gameContext.levels.current.config;
+            scheduleNextTeleportCycle(levelConfig);
         }
     }
-    
-    console.log(`🌀 Verificando piezas disponibles: ${piecesCount}`);
-    
-    // Si hay piezas y no hay teletransportación programada, reanudar
-    if (piecesCount > 0 && !teleportTimeoutId && !isTeleportWarningActive) {
-        console.log("🌀 Reanudando teletransportaciones - hay piezas disponibles");
-        const levelConfig = levelsConfiguration[6];
-        if (levelConfig) {
-            // Programar próxima teletransportación en 3 segundos
-            teleportTimeoutId = setTimeout(() => {
-                triggerTeleportWarning(levelConfig);
-            }, 3000);
-        }
+}
+
+function cleanupPreviousGame() {
+    console.log("🧹 Limpiando estado de juego anterior...");
+
+    // Llama a las funciones de limpieza de cada mecánica de nivel.
+    // Se comprueba si existen por seguridad, aunque los logs indican que sí.
+    if (typeof stopCementRain === 'function') {
+        stopCementRain();
     }
+    if (typeof cleanupRingSystem === 'function') {
+        cleanupRingSystem();
+    }
+    if (typeof stopLightningStorm === 'function') {
+        stopLightningStorm();
+    }
+    if (typeof stopDimensionalPortals === 'function') {
+        stopDimensionalPortals();
+    }
+
+    // Aquí se podrían añadir más lógicas de limpieza en el futuro,
+    // como resetear elementos de la UI de forma explícita.
 }
 

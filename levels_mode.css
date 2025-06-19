@@ -1175,6 +1175,37 @@
     }
 }
 
+/* Advertencia de Teletransporte */
+.teleport-warning {
+    position: relative !important;
+    background: radial-gradient(circle, rgba(173, 120, 255, 0.9), rgba(100, 50, 200, 0.6), rgba(50, 0, 130, 0.3)) !important;
+    border: 3px solid #ad78ff !important;
+    border-radius: 8px !important;
+    animation: teleportWarningPulse 0.5s ease-in-out infinite alternate !important;
+    z-index: 998 !important; /* Ligeramente por debajo del rayo */
+    pointer-events: none !important;
+    box-shadow: 
+        0 0 20px rgba(173, 120, 255, 0.8),
+        inset 0 0 10px rgba(230, 210, 255, 0.3) !important;
+}
+
+@keyframes teleportWarningPulse {
+    0% {
+        transform: scale(0.95);
+        opacity: 0.7;
+        box-shadow: 
+            0 0 15px rgba(173, 120, 255, 0.6),
+            inset 0 0 8px rgba(230, 210, 255, 0.2);
+    }
+    100% {
+        transform: scale(1.05);
+        opacity: 1;
+        box-shadow: 
+            0 0 30px rgba(173, 120, 255, 1),
+            inset 0 0 15px rgba(230, 210, 255, 0.4);
+    }
+}
+
 /* Efectos de descarga eléctrica */
 .cell.electric-discharge {
     animation: electricDischarge 1s ease-out !important;
