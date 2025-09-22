@@ -804,6 +804,11 @@ function initializeGameMode(mode) {
     console.log(`Initializing game mode: ${mode}`);
     currentGameMode = mode;
     currentScreen = 'gameplay';
+    // Limpiar cualquier efecto deprimente previo
+    if (typeof document !== 'undefined' && document.body) {
+        document.body.classList.remove('depressing-mode');
+    }
+    if (gameOverModal) gameOverModal.classList.remove('sad');
     
     board.length = 0; 
     for (let i = 0; i < 10; i++) { 
@@ -1316,26 +1321,52 @@ function handleGameOver() {
     hideComboMessage();
     updateComboVisuals();
 
-    navigateTo('game-over'); 
-
-    // Configurar y mostrar el modal de Game Over
-    if (gameOverTitleElement) {
-        gameOverTitleElement.textContent = currentGameMode === 'levels' ? "¡Nivel Fallido!" : "¡Juego Terminado!";
+    // Activar efecto deprimente específico del modo combo y preparar retraso
+    let preTransitionDelayMs = 0;
+    if (currentGameMode === 'combo') {
+        if (typeof document !== 'undefined' && document.body) {
+            document.body.classList.add('depressing-mode');
+        }
+        if (gameOverModal) gameOverModal.classList.add('sad');
+        // Animación rápida de quiebre del tablero
+        if (boardElement) {
+            boardElement.classList.add('board-crack');
+            setTimeout(() => {
+                if (boardElement) boardElement.classList.remove('board-crack');
+            }, 500);
+        }
+        preTransitionDelayMs = 700; // esperar a que se vea el quiebre
     }
-    if (finalScoreElement) {
-        finalScoreElement.textContent = `Puntaje Final: ${score}`;
-    }
-    
-    gameOverModal.classList.remove('hidden'); // Asegurar que no esté hidden por navigateTo
-    setTimeout(() => { // Aplicar transición de visibilidad
-      gameOverModal.classList.add('visible');
-    }, 20); 
 
-    // Asegurarse de que el fondo de estrellas se detenga y se oculte, y el fondo del body se restaure
-    if (backgroundCanvas) backgroundCanvas.style.display = 'none';
-    manageStarAnimation(false);
-    document.body.style.background = 'linear-gradient(to bottom right, #6D5B97, #A77DBA)';
-    starSpeedMultiplier = 1; // Resetear velocidad por si acaso
+    const proceedToGameOver = () => {
+        navigateTo('game-over');
+        // Configurar y mostrar el modal de Game Over
+        if (gameOverTitleElement) {
+            gameOverTitleElement.textContent = currentGameMode === 'levels' ? "¡Nivel Fallido!" : "¡Juego Terminado!";
+        }
+        if (finalScoreElement) {
+            finalScoreElement.textContent = `Puntaje Final: ${score}`;
+        }
+        gameOverModal.classList.remove('hidden');
+        const modalDelay = currentGameMode === 'combo' ? 500 : 20; // pequeño extra tras el quiebre
+        setTimeout(() => {
+            gameOverModal.classList.add('visible');
+        }, modalDelay);
+
+        // Asegurarse de que el fondo de estrellas se detenga y se oculte, y el fondo del body se restaure
+        if (backgroundCanvas) backgroundCanvas.style.display = 'none';
+        manageStarAnimation(false);
+        document.body.style.background = 'linear-gradient(to bottom right, #6D5B97, #A77DBA)';
+        starSpeedMultiplier = 1;
+    };
+
+    if (preTransitionDelayMs > 0) {
+        setTimeout(proceedToGameOver, preTransitionDelayMs);
+    } else {
+        proceedToGameOver();
+    }
+
+    // (La lógica de mostrar modal y detener fondo ahora se hace en proceedToGameOver)
 }
 
 function checkGameOver() {
@@ -1503,6 +1534,14 @@ function navigateTo(screen, modeData = null) {
                 manageStarAnimation(true);
             }
         }
+    }
+
+    // Al cambiar de pantalla, si salimos de game-over limpiar efecto deprimente
+    if (screen !== 'game-over') {
+        if (typeof document !== 'undefined' && document.body) {
+            document.body.classList.remove('depressing-mode');
+        }
+        if (gameOverModal) gameOverModal.classList.remove('sad');
     }
 
     if (screen === 'mode-description' && modeData) {
